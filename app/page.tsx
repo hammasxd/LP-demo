@@ -114,6 +114,10 @@ export default function BotDashboard() {
   const [maxRebalancesPerHour, setMaxRebalancesPerHour] = useState("");
   const [maxTurnoverToken0, setMaxTurnoverToken0] = useState("");
   const [maxTurnoverToken1, setMaxTurnoverToken1] = useState("");
+  const [circuitMaxBaseFeeGwei, setCircuitMaxBaseFeeGwei] = useState("");
+const [circuitMovePct, setCircuitMovePct] = useState("");
+const [circuitTickJump, setCircuitTickJump] = useState("");
+
   const [price, setPrice] = useState(0);
   const [lastEdited, setLastEdited] = useState<'amount0' | 'amount1' | null>(null);
   const [tickData, setTickData] = useState<{ [bot_id: string]: TickData[] }>({});
@@ -252,21 +256,25 @@ export default function BotDashboard() {
     setLoading(true);
     try {
       const payload = {
-        token0_address: token0,
-        token1_address: token1,
-        token0_amount: parseFloat(amount0),
-        token1_amount: parseFloat(amount1),
-        POOL_FEE: parseInt(feeTier),
-        COOLDOWN_SEC: Number(cooldownSec),
-        MIN_WIDTH_SPACINGS: Number(minWidthSpacings),
-        MIN_WIDTH_PCT: Number(minWidthPct),
-        EXIT_BUFFER_SPACINGS: Number(exitBufferSpacings),
-        slipage_bps: Number(slipageBps),
-        max_rebalances_per_day: maxRebalancesPerDay ? Number(maxRebalancesPerDay) : null,
-        max_rebalances_per_hour: maxRebalancesPerHour ? Number(maxRebalancesPerHour) : null,
-        max_turnover_token0_24h: maxTurnoverToken0 ? Number(maxTurnoverToken0) : null,
-        max_turnover_token1_24h: maxTurnoverToken1 ? Number(maxTurnoverToken1) : null,
-      };
+  token0_address: token0,
+  token1_address: token1,
+  token0_amount: parseFloat(amount0),
+  token1_amount: parseFloat(amount1),
+  POOL_FEE: parseInt(feeTier),
+  COOLDOWN_SEC: Number(cooldownSec),
+  MIN_WIDTH_SPACINGS: Number(minWidthSpacings),
+  MIN_WIDTH_PCT: Number(minWidthPct),
+  EXIT_BUFFER_SPACINGS: Number(exitBufferSpacings),
+  slipage_bps: Number(slipageBps),
+  max_rebalances_per_day: maxRebalancesPerDay ? Number(maxRebalancesPerDay) : null,
+  max_rebalances_per_hour: maxRebalancesPerHour ? Number(maxRebalancesPerHour) : null,
+  max_turnover_token0_24h: maxTurnoverToken0 ? Number(maxTurnoverToken0) : null,
+  max_turnover_token1_24h: maxTurnoverToken1 ? Number(maxTurnoverToken1) : null,
+  circuit_max_base_fee_gwei: circuitMaxBaseFeeGwei ? Number(circuitMaxBaseFeeGwei) : null,
+  circuit_move_pct: circuitMovePct ? Number(circuitMovePct) : null,
+  circuit_tick_jump: circuitTickJump ? Number(circuitTickJump) : null,
+};
+
       const response = await clientApiService.startBot(payload);
       addToast({
         title: "Success",
@@ -292,6 +300,10 @@ export default function BotDashboard() {
       setMaxRebalancesPerHour("");
       setMaxTurnoverToken0("");
       setMaxTurnoverToken1("");
+      setCircuitMaxBaseFeeGwei("");
+setCircuitMovePct("");
+setCircuitTickJump("");
+
       setPrice(0);
       setLastEdited(null);
       fetchBots();
@@ -761,6 +773,33 @@ export default function BotDashboard() {
                         onChange={(e) => setMaxTurnoverToken1(e.target.value)}
                         placeholder="Leave blank for unlimited"
                       />
+                      <Input
+  label="Circuit Max Base Fee (gwei)"
+  description="Maximum base fee in gwei before circuit breaker triggers"
+  type="number"
+  value={circuitMaxBaseFeeGwei}
+  onChange={(e) => setCircuitMaxBaseFeeGwei(e.target.value)}
+  placeholder="e.g. 100"
+/>
+
+<Input
+  label="Circuit Move %"
+  description="Minimum % move to trigger circuit breaker"
+  type="number"
+  value={circuitMovePct}
+  onChange={(e) => setCircuitMovePct(e.target.value)}
+  placeholder="e.g. 2"
+/>
+
+<Input
+  label="Circuit Tick Jump"
+  description="Minimum tick jump before rebalancing"
+  type="number"
+  value={circuitTickJump}
+  onChange={(e) => setCircuitTickJump(e.target.value)}
+  placeholder="e.g. 50"
+/>
+
                     </>
                   )}
                 </ModalBody>
