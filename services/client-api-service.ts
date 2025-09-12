@@ -41,6 +41,7 @@ export interface ActiveBot {
   token0_amount: string;
   token1_amount: string;
   POOL_FEE: number;
+  status: string; // New
 }
 
 export interface ActiveBotsResponse {
@@ -55,6 +56,7 @@ export interface ResumeBotResponse {
   bot_id: string;
   position_id: number | null;
   message: string;
+  status?: string; // Optional as per models
 }
 
 const clientApiService = {

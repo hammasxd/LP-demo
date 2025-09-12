@@ -40,7 +40,11 @@ interface TickData {
   tick: number; // Actual tick value
   lower_tick: number;
   upper_tick: number;
+  owed0_units: string;
+  owed1_units: string;
   timestamp: string;
+  status: string; // New
+  position_id: number | null; // New
 }
 
 const WETHIcon = (props: React.SVGProps<SVGSVGElement>) => (
@@ -79,6 +83,16 @@ const USDCIcon = (props: React.SVGProps<SVGSVGElement>) => (
   </svg>
 );
 
+const FACTORY_ADDRESS = "0x0227628f3F023bb0B980b67D528571c95c6DaC1c";
+
+const FactoryABI = [
+  "function getPool(address tokenA, address tokenB, uint24 fee) external view returns (address pool)"
+];
+
+const PoolABI = [
+  "function slot0() external view returns (uint160 sqrtPriceX96, int24 tick, uint16 observationIndex, uint16 observationCardinality, uint16 observationCardinalityNext, uint8 feeProtocol, bool unlocked)"
+];
+
 export default function BotDashboard() {
   const { isOpen, onOpen, onClose } = useDisclosure();
   const [activeBots, setActiveBots] = useState<ActiveBot[]>([]);
@@ -91,14 +105,21 @@ export default function BotDashboard() {
   const [feeTier, setFeeTier] = useState("500");
   const [amount0, setAmount0] = useState("");
   const [amount1, setAmount1] = useState("");
+  const [cooldownSec, setCooldownSec] = useState("3600");
+  const [minWidthSpacings, setMinWidthSpacings] = useState("10");
+  const [minWidthPct, setMinWidthPct] = useState("0.05");
+  const [exitBufferSpacings, setExitBufferSpacings] = useState("5");
+  const [slipageBps, setSlipageBps] = useState("50");
+  const [maxRebalancesPerDay, setMaxRebalancesPerDay] = useState("");
+  const [maxRebalancesPerHour, setMaxRebalancesPerHour] = useState("");
+  const [maxTurnoverToken0, setMaxTurnoverToken0] = useState("");
+  const [maxTurnoverToken1, setMaxTurnoverToken1] = useState("");
+  const [price, setPrice] = useState(0);
+  const [lastEdited, setLastEdited] = useState<'amount0' | 'amount1' | null>(null);
   const [tickData, setTickData] = useState<{ [bot_id: string]: TickData[] }>({});
+  const [latestBotData, setLatestBotData] = useState<{ [bot_id: string]: Partial<TickData> }>({});
   const wsRef = useRef<WebSocket | null>(null);
-const provider = new ethers.JsonRpcProvider(process.env.NEXT_PUBLIC_RPC_URL);
-const positionManager = new ethers.Contract(
-  process.env.NEXT_PUBLIC_POSITION_MANAGER_ADDRESS as string,
-  NFTPositionManagerABI,    
-  provider
-);
+
   const tokens: Token[] = [
     { label: "USDC", value: "0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238", icon: USDCIcon },
     { label: "WETH", value: "0xfFf9976782d46CC05630D1f6eBAb18b2324d6B14", icon: WETHIcon },
@@ -120,10 +141,26 @@ const positionManager = new ethers.Contract(
     ws.onopen = () => console.log("WebSocket connected");
     ws.onmessage = (event) => {
       const data: TickData = JSON.parse(event.data);
-      setTickData((prev) => ({
+      setLatestBotData((prev) => ({
         ...prev,
-        [data.bot_id]: [...(prev[data.bot_id] || []).slice(-50), data], // Keep last 50 points
+        [data.bot_id]: {
+          status: data.status,
+          position_id: data.position_id,
+          owed0_units: data.owed0_units,
+          owed1_units: data.owed1_units,
+          lower_tick: data.lower_tick,
+          upper_tick: data.upper_tick,
+          tick: data.tick,
+          timestamp: data.timestamp,
+        },
       }));
+
+      if (data.y !== undefined) {
+        setTickData((prev) => ({
+          ...prev,
+          [data.bot_id]: [...(prev[data.bot_id] || []).slice(-50), data], // Keep last 50 points
+        }));
+      }
     };
     ws.onerror = (error) => console.error("WebSocket error:", error);
     ws.onclose = () => console.log("WebSocket closed");
@@ -156,6 +193,61 @@ const positionManager = new ethers.Contract(
     fetchBots();
   }, []);
 
+  const getPriceInToken0PerToken1 = async () => {
+    const provider = new ethers.JsonRpcProvider("https://sepolia.infura.io/v3/09d83155055445d08c5e7becc22e18e3");
+    const factory = new ethers.Contract(FACTORY_ADDRESS, FactoryABI, provider);
+    const poolAddress = await factory.getPool(token0, token1, Number(feeTier));
+    if (poolAddress === ethers.ZeroAddress) {
+      throw new Error("Pool not found");
+    }
+    const pool = new ethers.Contract(poolAddress, PoolABI, provider);
+    const slot0 = await pool.slot0();
+    const sqrtPriceX96 = slot0[0]; // uint160
+    const sqrtPrice = Number(sqrtPriceX96) / Math.pow(2, 96);
+    const rawPriceNum = Math.pow(sqrtPrice, 2);
+    const dec0 = 6;
+    const dec1 = 18;
+    const ph = Math.pow(10, dec1 - dec0) / rawPriceNum;
+    return ph;
+  };
+
+  useEffect(() => {
+    if (currentStep === 2 && price === 0) {
+      const fetchPrice = async () => {
+        try {
+          const p = await getPriceInToken0PerToken1();
+          setPrice(p);
+        } catch (err) {
+          addToast({
+            title: "Error",
+            description: err instanceof Error ? err.message : "Failed to fetch price",
+            timeout: 5000,
+            shouldShowTimeoutProgress: true,
+          });
+        }
+      };
+      fetchPrice();
+    }
+  }, [currentStep, price]);
+
+  useEffect(() => {
+    if (lastEdited === 'amount0' && amount0 && price > 0) {
+      const amt0 = parseFloat(amount0);
+      if (!isNaN(amt0)) {
+        setAmount1((amt0 / price).toFixed(6));
+      }
+    }
+  }, [amount0, lastEdited, price]);
+
+  useEffect(() => {
+    if (lastEdited === 'amount1' && amount1 && price > 0) {
+      const amt1 = parseFloat(amount1);
+      if (!isNaN(amt1)) {
+        setAmount0((amt1 * price).toFixed(2));
+      }
+    }
+  }, [amount1, lastEdited, price]);
+
   const handleStartBot = async () => {
     setLoading(true);
     try {
@@ -165,6 +257,15 @@ const positionManager = new ethers.Contract(
         token0_amount: parseFloat(amount0),
         token1_amount: parseFloat(amount1),
         POOL_FEE: parseInt(feeTier),
+        COOLDOWN_SEC: Number(cooldownSec),
+        MIN_WIDTH_SPACINGS: Number(minWidthSpacings),
+        MIN_WIDTH_PCT: Number(minWidthPct),
+        EXIT_BUFFER_SPACINGS: Number(exitBufferSpacings),
+        slipage_bps: Number(slipageBps),
+        max_rebalances_per_day: maxRebalancesPerDay ? Number(maxRebalancesPerDay) : null,
+        max_rebalances_per_hour: maxRebalancesPerHour ? Number(maxRebalancesPerHour) : null,
+        max_turnover_token0_24h: maxTurnoverToken0 ? Number(maxTurnoverToken0) : null,
+        max_turnover_token1_24h: maxTurnoverToken1 ? Number(maxTurnoverToken1) : null,
       };
       const response = await clientApiService.startBot(payload);
       addToast({
@@ -182,6 +283,17 @@ const positionManager = new ethers.Contract(
       setCurrentStep(1);
       setAmount0("");
       setAmount1("");
+      setCooldownSec("3600");
+      setMinWidthSpacings("10");
+      setMinWidthPct("0.05");
+      setExitBufferSpacings("5");
+      setSlipageBps("50");
+      setMaxRebalancesPerDay("");
+      setMaxRebalancesPerHour("");
+      setMaxTurnoverToken0("");
+      setMaxTurnoverToken1("");
+      setPrice(0);
+      setLastEdited(null);
       fetchBots();
     } catch (err) {
       addToast({
@@ -279,107 +391,119 @@ const positionManager = new ethers.Contract(
     }
   };
 
- const BotCard = ({ bot, isActive }: { bot: ActiveBot; isActive: boolean }) => {
-  const token0Info = tokens.find((t) => t.value === bot.token0_address);
-  const token1Info = tokens.find((t) => t.value === bot.token1_address);
-  const token0Label = token0Info?.label || bot.token0_address.slice(0, 6);
-  const token1Label = token1Info?.label || bot.token1_address.slice(0, 6);
-  const Token0Icon = token0Info?.icon || WETHIcon;
-  const Token1Icon = token1Info?.icon || USDCIcon;
-  const [FeesLoading, setFeesLoading] = useState(false);
-  const [fees, setFees] = useState<{ token0Fees: string; token1Fees: string }>({ token0Fees: "0", token1Fees: "0" });
-  const chartRef = useRef<any>(null);
-    const fetchFees = async () => {
-        setFeesLoading(true);
-        try {
-          console.log("Fetching fees for position ID:", bot.position_id);
-          const positionFees = await positionManager.positions(bot.position_id);
-          setFees({
-            token0Fees: ethers.formatUnits(positionFees.tokensOwed0, 6), // Assuming USDC has 6 decimals
-            token1Fees: ethers.formatUnits(positionFees.tokensOwed1, 18), // Assuming WETH has 18 decimals
-          });
-        } catch (err) {
-          console.error("Failed to fetch fees:", err);
-          addToast({
-            title: "Error",
-            description: "Failed to fetch fees for bot",
-            timeout: 5000,
-            shouldShowTimeoutProgress: true,
-          });
-        } finally {
-          setFeesLoading(false);
-        }
-      };
-  const chartOptions = {
-    responsive: true,
-    maintainAspectRatio: false,
-    scales: {
-      y: {
-        title: { display: true, text: "Tick", color: "#d1d5db" },
-        min: tickData[bot.bot_id]?.[0]?.lower_tick || 0,
-        max: tickData[bot.bot_id]?.[0]?.upper_tick || 1000,
-        grid: { color: "rgba(209, 213, 219, 0.1)" },
-        ticks: { color: "#d1d5db" },
-      },
-    },
-    plugins: {
-      legend: { display: false },
-      tooltip: {
-        callbacks: {
-          label: (context: any) => `Tick: ${context.raw.toFixed(0)}`,
-        },
-      },
-    },
+  const getStatusColor = (status: string) => {
+    if (status.includes('active')) return 'bg-green-500/20 text-green-400';
+    if (status.includes('rebalancing') || status.includes('minting') || status.includes('withdrawing')) return 'bg-yellow-500/20 text-yellow-400';
+    if (status.includes('error')) return 'bg-red-500/20 text-red-400';
+    if (status.includes('stopped') || status.includes('withdrawn')) return 'bg-gray-500/20 text-gray-400';
+    return 'bg-blue-500/20 text-blue-400';
   };
 
-  const initialChartData = {
-    labels: [],
-    datasets: [
-      {
-        label: "Current Tick",
-        data: [],
-        borderColor: "#3b82f6",
-        backgroundColor: (ctx: any) => {
-          const gradient = ctx.chart.ctx.createLinearGradient(0, 0, 0, 150);
-          gradient.addColorStop(0, "rgba(59, 130, 246, 0.4)");
-          gradient.addColorStop(1, "rgba(59, 130, 246, 0)");
-          return gradient;
+  const BotCard = ({ bot, isActive }: { bot: ActiveBot; isActive: boolean }) => {
+    const token0Info = tokens.find((t) => t.value === bot.token0_address);
+    const token1Info = tokens.find((t) => t.value === bot.token1_address);
+    const token0Label = token0Info?.label || bot.token0_address.slice(0, 6);
+    const token1Label = token1Info?.label || bot.token1_address.slice(0, 6);
+    const Token0Icon = token0Info?.icon || WETHIcon;
+    const Token1Icon = token1Info?.icon || USDCIcon;
+    const chartRef = useRef<any>(null);
+
+    const latest = latestBotData[bot.bot_id] || {};
+    const currentStatus = latest.status || bot.status;
+    const currentPositionId = latest.position_id ?? bot.position_id;
+    const owed0 = latest.owed0_units || (tickData[bot.bot_id]?.at(-1)?.owed0_units || '0');
+    const owed1 = latest.owed1_units || (tickData[bot.bot_id]?.at(-1)?.owed1_units || '0');
+    const isProcessing = currentStatus.includes('rebalancing') || currentStatus.includes('minting') || currentStatus.includes('withdrawing');
+
+    const chartOptions = {
+      responsive: true,
+      maintainAspectRatio: false,
+      scales: {
+        y: {
+          title: { display: true, text: "Tick", color: "#d1d5db" },
+          grid: { color: "rgba(209, 213, 219, 0.1)" },
+          ticks: { color: "#d1d5db" },
         },
-        fill: false,
-        tension: 0.4,
-        pointRadius: 0,
-        pointBackgroundColor: "#3b82f6",
       },
-    ],
-  };
+      plugins: {
+        legend: { display: true, position: 'top' as const },
+        tooltip: {
+          callbacks: {
+            label: (context: any) => `${context.dataset.label}: ${context.raw.toFixed(0)}`,
+          },
+        },
+      },
+    };
 
-  // Efficiently update chart data when new ticks arrive
-  useEffect(() => {
-    if (!chartRef.current) return;
-    const chart = chartRef.current;
+    const initialChartData = {
+      labels: tickData[bot.bot_id]?.map((d) => '') || [], // Empty labels for time
+      datasets: [
+        {
+          label: "Current Tick",
+          data: tickData[bot.bot_id]?.map((d) => d.tick) || [],
+          borderColor: "#3b82f6",
+          backgroundColor: (ctx: any) => {
+            const gradient = ctx.chart.ctx.createLinearGradient(0, 0, 0, 150);
+            gradient.addColorStop(0, "rgba(59, 130, 246, 0.4)");
+            gradient.addColorStop(1, "rgba(59, 130, 246, 0)");
+            return gradient;
+          },
+          fill: true,
+          tension: 0.4,
+          pointRadius: 0,
+          pointBackgroundColor: "#3b82f6",
+        },
+        {
+          label: "Lower Tick",
+          data: tickData[bot.bot_id]?.map((d) => d.lower_tick) || [],
+          borderColor: "#ef4444",
+          borderDash: [5, 5],
+          pointRadius: 0,
+          fill: false,
+        },
+        {
+          label: "Upper Tick",
+          data: tickData[bot.bot_id]?.map((d) => d.upper_tick) || [],
+          borderColor: "#22c55e",
+          borderDash: [5, 5],
+          pointRadius: 0,
+          fill: false,
+        },
+      ],
+    };
 
-    const ticks = tickData[bot.bot_id]?.map((d) => d.tick) || [];
-    const labels = tickData[bot.bot_id]?.map((d) => "") || [];
+    // Efficiently update chart data when new ticks arrive
+    useEffect(() => {
+      if (!chartRef.current) return;
+      const chart = chartRef.current;
 
-    chart.data.labels = labels;
-    chart.data.datasets[0].data = ticks;
-    chart.update("none"); // 'none' prevents animation for smooth tick movement
-  }, [tickData[bot.bot_id]]);
+      const labels = tickData[bot.bot_id]?.map((d) => '') || [];
+      const currentTicks = tickData[bot.bot_id]?.map((d) => d.tick) || [];
+      const lowerTicks = tickData[bot.bot_id]?.map((d) => d.lower_tick) || [];
+      const upperTicks = tickData[bot.bot_id]?.map((d) => d.upper_tick) || [];
 
-  return (
+      chart.data.labels = labels;
+      chart.data.datasets[0].data = currentTicks;
+      chart.data.datasets[1].data = lowerTicks;
+      chart.data.datasets[2].data = upperTicks;
+      chart.update("none"); // 'none' prevents animation for smooth tick movement
+    }, [tickData[bot.bot_id]]);
+
+    return (
       <Card className="bg-gradient-to-br from-blue-900 to-purple-900 rounded-xl shadow-lg overflow-hidden border border-blue-500/50">
         <CardHeader>
           <div className="flex justify-between items-center">
             <div className="text-lg font-bold">Bot ID: {bot.bot_id.slice(0, 8)}...</div>
-            <span className={`text-sm px-2 py-1 rounded-full ${isActive ? "bg-green-500/20 text-green-400" : "bg-red-500/20 text-red-400"}`}>
-              {isActive ? "Active" : "Inactive"}
+            <span className={`text-sm px-2 py-1 rounded-full ${getStatusColor(currentStatus)}`}>
+              {isProcessing ? <Loader2 className="inline mr-1 animate-spin" size={14} /> : null}
+              {currentStatus}
             </span>
           </div>
         </CardHeader>
         <CardBody className="space-y-4">
           <div className="flex items-center space-x-2">
             <span className="text-sm font-semibold">Position ID:</span>
-            <span>{bot.position_id}</span>
+            <span>{currentPositionId ?? 'None'}</span>
           </div>
           <div className="flex items-center space-x-2">
             <Token0Icon className="text-xl text-blue-400" />
@@ -397,16 +521,10 @@ const positionManager = new ethers.Contract(
           </div>
           <div className="flex items-center space-x-2">
             <span className="text-sm font-semibold">Earned Fees:</span>
-            {FeesLoading ? (
-              <Loader2 className="animate-spin h-4 w-4 text-gray-400" />
-            ) : (
-              <span>
-                {Number(fees.token0Fees).toFixed(6)} {token0Label}, {Number(fees.token1Fees).toFixed(6)} {token1Label}
-              </span>
-            )}
-            <Button size="sm" variant="light" onPress={fetchFees} disabled={FeesLoading}>
-              Refresh
-            </Button>
+            <span>
+              {Number(owed0).toFixed(6)} {token0Label},{" "}
+              {Number(owed1).toFixed(6)} {token1Label}
+            </span>
           </div>
 
           {isActive && tickData[bot.bot_id]?.length > 0 && (
@@ -451,8 +569,8 @@ const positionManager = new ethers.Contract(
           )}
         </CardFooter>
       </Card>
-  );
-};
+    );
+  };
 
 
   return (
@@ -472,12 +590,24 @@ const positionManager = new ethers.Contract(
 
         <Modal
           backdrop="blur"
+          scrollBehavior="inside"
           isOpen={isOpen}
           onClose={() => {
             onClose();
             setCurrentStep(1);
             setAmount0("");
             setAmount1("");
+            setCooldownSec("3600");
+            setMinWidthSpacings("10");
+            setMinWidthPct("0.05");
+            setExitBufferSpacings("5");
+            setSlipageBps("50");
+            setMaxRebalancesPerDay("");
+            setMaxRebalancesPerHour("");
+            setMaxTurnoverToken0("");
+            setMaxTurnoverToken1("");
+            setPrice(0);
+            setLastEdited(null);
           }}
           className=""
         >
@@ -535,7 +665,10 @@ const positionManager = new ethers.Contract(
                         description={`Enter the amount of ${tokens.find((t) => t.value === token0)?.label} to provide`}
                         type="number"
                         value={amount0}
-                        onChange={(e) => setAmount0(e.target.value)}
+                        onChange={(e) => {
+                          setAmount0(e.target.value);
+                          setLastEdited('amount0');
+                        }}
                         endContent={<span className="text-default-400 text-small">{tokens.find((t) => t.value === token0)?.label}</span>}
                         placeholder="0.00"
                       />
@@ -544,9 +677,89 @@ const positionManager = new ethers.Contract(
                         description={`Enter the amount of ${tokens.find((t) => t.value === token1)?.label} to provide`}
                         type="number"
                         value={amount1}
-                        onChange={(e) => setAmount1(e.target.value)}
+                        onChange={(e) => {
+                          setAmount1(e.target.value);
+                          setLastEdited('amount1');
+                        }}
                         endContent={<span className="text-default-400 text-small">{tokens.find((t) => t.value === token1)?.label}</span>}
                         placeholder="0.00"
+                      />
+                    </>
+                  )}
+                  {currentStep === 3 && (
+                    <>
+                      <Input
+                        label="Cooldown Seconds"
+                        description="Minimum time in seconds between rebalances."
+                        type="number"
+                        value={cooldownSec}
+                        onChange={(e) => setCooldownSec(e.target.value)}
+                        placeholder="3600"
+                      />
+                      <Input
+                        label="Min Width Spacings"
+                        description="Minimum width of the liquidity range in tick spacings."
+                        type="number"
+                        value={minWidthSpacings}
+                        onChange={(e) => setMinWidthSpacings(e.target.value)}
+                        placeholder="10"
+                      />
+                      <Input
+                        label="Min Width Percentage"
+                        description="Minimum width of the liquidity range as a percentage."
+                        type="number"
+                        step="0.01"
+                        value={minWidthPct}
+                        onChange={(e) => setMinWidthPct(e.target.value)}
+                        placeholder="0.05"
+                      />
+                      <Input
+                        label="Exit Buffer Spacings"
+                        description="Number of tick spacings for the exit buffer (hysteresis)."
+                        type="number"
+                        value={exitBufferSpacings}
+                        onChange={(e) => setExitBufferSpacings(e.target.value)}
+                        placeholder="5"
+                      />
+                      <Input
+                        label="Slippage BPS"
+                        description="Slippage tolerance in basis points for liquidity operations."
+                        type="number"
+                        value={slipageBps}
+                        onChange={(e) => setSlipageBps(e.target.value)}
+                        placeholder="50"
+                      />
+                      <Input
+                        label="Max Rebalances Per Day"
+                        description="Maximum number of rebalances allowed per day. Leave blank for unlimited."
+                        type="number"
+                        value={maxRebalancesPerDay}
+                        onChange={(e) => setMaxRebalancesPerDay(e.target.value)}
+                        placeholder="Leave blank for unlimited"
+                      />
+                      <Input
+                        label="Max Rebalances Per Hour"
+                        description="Maximum number of rebalances allowed per hour. Leave blank for unlimited."
+                        type="number"
+                        value={maxRebalancesPerHour}
+                        onChange={(e) => setMaxRebalancesPerHour(e.target.value)}
+                        placeholder="Leave blank for unlimited"
+                      />
+                      <Input
+                        label="Max Turnover Token0 24h"
+                        description="Maximum turnover for token0 in the last 24 hours. Leave blank for unlimited."
+                        type="number"
+                        value={maxTurnoverToken0}
+                        onChange={(e) => setMaxTurnoverToken0(e.target.value)}
+                        placeholder="Leave blank for unlimited"
+                      />
+                      <Input
+                        label="Max Turnover Token1 24h"
+                        description="Maximum turnover for token1 in the last 24 hours. Leave blank for unlimited."
+                        type="number"
+                        value={maxTurnoverToken1}
+                        onChange={(e) => setMaxTurnoverToken1(e.target.value)}
+                        placeholder="Leave blank for unlimited"
                       />
                     </>
                   )}
@@ -558,10 +771,23 @@ const positionManager = new ethers.Contract(
                     >
                       Next
                     </Button>
-                  ) : (
+                  ) : currentStep === 2 ? (
                     <>
                       <Button
                         onPress={() => setCurrentStep(1)}
+                      >
+                        Back
+                      </Button>
+                      <Button
+                        onPress={() => setCurrentStep(3)}
+                      >
+                        Next
+                      </Button>
+                    </>
+                  ) : (
+                    <>
+                      <Button
+                        onPress={() => setCurrentStep(2)}
                       >
                         Back
                       </Button>
