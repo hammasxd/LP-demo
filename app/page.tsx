@@ -139,7 +139,7 @@ const [circuitTickJump, setCircuitTickJump] = useState("");
 
   useEffect(() => {
     // Initialize WebSocket connection
-    const ws = new WebSocket("ws://localhost:8000/ws/graph");
+    const ws = new WebSocket("ws://34.172.112.178:8008/ws/graph");
     wsRef.current = ws;
 
     ws.onopen = () => console.log("WebSocket connected");
