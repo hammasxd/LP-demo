@@ -1,0 +1,29 @@
+name: LP_Frontend_Deployment
+
+on:
+  push:
+    branches:
+      - main
+
+jobs: 
+  deploy:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Connect to Remote Server and Deploy
+        uses: appleboy/ssh-action@v0.1.8
+        with:
+          host: ${{ secrets.REMOTE_SERVER }}
+          username: ${{ secrets.REMOTE_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          port: 22
+          script: |
+            cd /home/ubuntu/lp-manager-bot/frontend/LP-bot-Frontend
+            git pull origin main
+            docker compose up -d --build
+
+            echo "Pruning unused Docker images and resources..."
+            docker image prune -af --filter "until=24h" || true
+            docker container prune -f || true
+            docker volume prune -f || true
+
+            echo "Deployment and cleanup completed successfully."
