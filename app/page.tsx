@@ -139,7 +139,7 @@ const [circuitTickJump, setCircuitTickJump] = useState("");
 
   useEffect(() => {
     // Initialize WebSocket connection
-    const ws = new WebSocket("ws://34.172.112.178:8008/ws/graph");
+    const ws = new WebSocket(`${process.env.NEXT_PUBLIC_API_BASE_URL_WS}/ws/graph`);
     wsRef.current = ws;
 
     ws.onopen = () => console.log("WebSocket connected");
@@ -426,26 +426,34 @@ setCircuitTickJump("");
     const owed0 = latest.owed0_units || (tickData[bot.bot_id]?.at(-1)?.owed0_units || '0');
     const owed1 = latest.owed1_units || (tickData[bot.bot_id]?.at(-1)?.owed1_units || '0');
     const isProcessing = currentStatus.includes('rebalancing') || currentStatus.includes('minting') || currentStatus.includes('withdrawing');
+const ticks = tickData[bot.bot_id]?.map((d) => d.tick) || [];
+  const lowerTicks = tickData[bot.bot_id]?.map((d) => d.lower_tick) || [];
+  const upperTicks = tickData[bot.bot_id]?.map((d) => d.upper_tick) || [];
+  const allTicks = [...ticks, ...lowerTicks, ...upperTicks];
+  const minTick = allTicks.length > 0 ? Math.min(...allTicks) : 0;
+  const maxTick = allTicks.length > 0 ? Math.max(...allTicks) : 0;
 
-    const chartOptions = {
-      responsive: true,
-      maintainAspectRatio: false,
-      scales: {
-        y: {
-          title: { display: true, text: "Tick", color: "#d1d5db" },
-          grid: { color: "rgba(209, 213, 219, 0.1)" },
-          ticks: { color: "#d1d5db" },
+  const chartOptions = {
+    responsive: true,
+    maintainAspectRatio: false,
+    scales: {
+      y: {
+        title: { display: true, text: "Tick", color: "#d1d5db" },
+        grid: { color: "rgba(209, 213, 219, 0.1)" },
+        ticks: { color: "#d1d5db" },
+        min: minTick - 100, // Extend lower boundary by 300 ticks
+        max: maxTick + 100, // Extend upper boundary by 300 ticks
+      },
+    },
+    plugins: {
+      legend: { display: true, position: 'top' as const },
+      tooltip: {
+        callbacks: {
+          label: (context: any) => `${context.dataset.label}: ${context.raw.toFixed(0)}`,
         },
       },
-      plugins: {
-        legend: { display: true, position: 'top' as const },
-        tooltip: {
-          callbacks: {
-            label: (context: any) => `${context.dataset.label}: ${context.raw.toFixed(0)}`,
-          },
-        },
-      },
-    };
+    },
+  };  
 
     const initialChartData = {
       labels: tickData[bot.bot_id]?.map((d) => '') || [], // Empty labels for time
@@ -502,7 +510,7 @@ setCircuitTickJump("");
     }, [tickData[bot.bot_id]]);
 
     return (
-      <Card className="bg-gradient-to-br from-blue-900 to-purple-900 rounded-xl shadow-lg overflow-hidden border border-blue-500/50">
+      <Card  className="">
         <CardHeader>
           <div className="flex justify-between items-center">
             <div className="text-lg font-bold">Bot ID: {bot.bot_id.slice(0, 8)}...</div>
@@ -589,13 +597,13 @@ setCircuitTickJump("");
     <div>
       <div>
         <div className="flex justify-between items-center mb-8">
-          <h1 className="text-4xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-blue-400 to-purple-500">Liquidity Bot Dashboard</h1>
+          <h1 className="text-4xl font-bold  ">Liquidity Bot Dashboard</h1>
           <ThemeSwitch />
         </div>
 
         <Button
           onPress={onOpen}
-          className="mb-8 transition-all duration-300 rounded-xl bg-gradient-to-br from-blue-900 to-purple-900"
+          className="mb-8"
         >
           <Plus className="mr-2" /> Add New Bot
         </Button>
@@ -636,7 +644,7 @@ setCircuitTickJump("");
                         selectedKeys={[token0]}
                         isDisabled
                         onSelectionChange={(keys) => setToken0(Array.from(keys)[0] as string)}
-                        startContent={<div className="flex items-center">{tokens.find(t => t.value === token0)?.icon({ className: "text-xl text-blue-400" })}</div>}
+                        startContent={<div className="flex items-center">{tokens.find(t => t.value === token0)?.icon({ className: "text-xl" })}</div>}
                       >
                         {tokens.map((t) => (
                           <SelectItem key={t.value} startContent={<t.icon className="text-xl" />}>
@@ -650,7 +658,7 @@ setCircuitTickJump("");
                         selectedKeys={[token1]}
                         isDisabled
                         onSelectionChange={(keys) => setToken1(Array.from(keys)[0] as string)}
-                        startContent={<div className="flex items-center">{tokens.find(t => t.value === token1)?.icon({ className: "text-xl text-blue-400" })}</div>}
+                        startContent={<div className="flex items-center">{tokens.find(t => t.value === token1)?.icon({ className: "text-xl " })}</div>}
                       >
                         {tokens.map((t) => (
                           <SelectItem key={t.value} startContent={<t.icon className="text-xl " />}>
