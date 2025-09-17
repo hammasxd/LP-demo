@@ -9,6 +9,8 @@ import { Modal, ModalContent, ModalHeader, ModalBody, ModalFooter, useDisclosure
 import { Tabs, Tab } from "@heroui/tabs";
 import { addToast } from "@heroui/toast";
 import { Loader2, Plus, Play, StopCircle, DollarSign } from "lucide-react";
+import { RadioGroup, Radio } from "@heroui/radio";
+
 import { ThemeSwitch } from "@/components/theme-switch";
 import clientApiService, { ActiveBot } from "@/services/client-api-service";
 import { Line } from "react-chartjs-2";
@@ -39,6 +41,8 @@ interface TickData {
   y: number; // Normalized tick (0 to 1)
   tick: number; // Actual tick value
   lower_tick: number;
+  down_rbal:number;
+  up_rebal:number;
   upper_tick: number;
   owed0_units: string;
   owed1_units: string;
@@ -115,8 +119,18 @@ export default function BotDashboard() {
   const [maxTurnoverToken0, setMaxTurnoverToken0] = useState("");
   const [maxTurnoverToken1, setMaxTurnoverToken1] = useState("");
   const [circuitMaxBaseFeeGwei, setCircuitMaxBaseFeeGwei] = useState("");
-const [circuitMovePct, setCircuitMovePct] = useState("");
-const [circuitTickJump, setCircuitTickJump] = useState("");
+  const [circuitMovePct, setCircuitMovePct] = useState("");
+  const [circuitTickJump, setCircuitTickJump] = useState("");
+  const [botType, setBotType] = useState("MANUAL")
+  const [atrPeriod, setAtrPeriod] = useState("")
+  const [forecastHorizon, setForecastHorizon] = useState("")
+  const [bandCoverage, setBandCoverage] = useState("")
+  const [volMul, setVolMul] = useState("")
+  const [upperBand, setUpperBand] = useState("")
+  const [lowerBand, setLowerBand] = useState("")
+  const [rebalUp, setRebalUp] = useState("")
+  const [rebalDown, setRebalDown] = useState("")
+
 
   const [price, setPrice] = useState(0);
   const [lastEdited, setLastEdited] = useState<'amount0' | 'amount1' | null>(null);
@@ -255,24 +269,34 @@ const [circuitTickJump, setCircuitTickJump] = useState("");
   const handleStartBot = async () => {
     setLoading(true);
     try {
-      const payload = {
-  token0_address: token0,
-  token1_address: token1,
-  token0_amount: parseFloat(amount0),
-  token1_amount: parseFloat(amount1),
-  POOL_FEE: parseInt(feeTier),
-  COOLDOWN_SEC: Number(cooldownSec),
-  MIN_WIDTH_SPACINGS: Number(minWidthSpacings),
-  MIN_WIDTH_PCT: Number(minWidthPct),
-  EXIT_BUFFER_SPACINGS: Number(exitBufferSpacings),
-  slipage_bps: Number(slipageBps),
-  max_rebalances_per_day: maxRebalancesPerDay ? Number(maxRebalancesPerDay) : null,
-  max_rebalances_per_hour: maxRebalancesPerHour ? Number(maxRebalancesPerHour) : null,
-  max_turnover_token0_24h: maxTurnoverToken0 ? Number(maxTurnoverToken0) : null,
-  max_turnover_token1_24h: maxTurnoverToken1 ? Number(maxTurnoverToken1) : null,
-  circuit_max_base_fee_gwei: circuitMaxBaseFeeGwei ? Number(circuitMaxBaseFeeGwei) : null,
-  circuit_move_pct: circuitMovePct ? Number(circuitMovePct) : null,
-  circuit_tick_jump: circuitTickJump ? Number(circuitTickJump) : null,
+    const payload = {
+    token0_address: token0,
+    token1_address: token1,
+    token0_amount: parseFloat(amount0),
+    token1_amount: parseFloat(amount1),
+    POOL_FEE: parseInt(feeTier),
+    COOLDOWN_SEC: Number(cooldownSec),
+    MIN_WIDTH_SPACINGS: Number(minWidthSpacings),
+    MIN_WIDTH_PCT: Number(minWidthPct),
+    EXIT_BUFFER_SPACINGS: Number(exitBufferSpacings),
+    slipage_bps: Number(slipageBps),
+    max_rebalances_per_day: maxRebalancesPerDay ? Number(maxRebalancesPerDay) : null,
+    max_rebalances_per_hour: maxRebalancesPerHour ? Number(maxRebalancesPerHour) : null,
+    max_turnover_token0_24h: maxTurnoverToken0 ? Number(maxTurnoverToken0) : null,
+    max_turnover_token1_24h: maxTurnoverToken1 ? Number(maxTurnoverToken1) : null,
+    circuit_max_base_fee_gwei: circuitMaxBaseFeeGwei ? Number(circuitMaxBaseFeeGwei) : null,
+    circuit_move_pct: circuitMovePct ? Number(circuitMovePct) : null,
+    circuit_tick_jump: circuitTickJump ? Number(circuitTickJump) : null,
+    bot_type: botType || "MAN",
+    manual_upper_band: upperBand ? Number(upperBand) : null,
+    manual_lower_band_pct: lowerBand ? Number(lowerBand) : null,
+    VOL_MULT: volMul ? Number(volMul) : 1.0,
+    P_TARGET: bandCoverage ? Number(bandCoverage) : 1.0,
+    ATR_PERIOD_DAYS: atrPeriod ? Number(atrPeriod) : 7,
+    HORIZON_DAYS: forecastHorizon ? Number(forecastHorizon) : 7,
+    SIGMA_FACTOR: bandCoverage ? Number(bandCoverage) : 1.0,
+    downside_rebal_pct: rebalDown ? Number(rebalDown) : null,
+    upside_rebal_pct: rebalUp ? Number(rebalUp) : null,
 };
 
       const response = await clientApiService.startBot(payload);
@@ -291,18 +315,18 @@ const [circuitTickJump, setCircuitTickJump] = useState("");
       setCurrentStep(1);
       setAmount0("");
       setAmount1("");
-      setCooldownSec("3600");
-      setMinWidthSpacings("10");
-      setMinWidthPct("0.05");
+      setCooldownSec("300");
+      setMinWidthSpacings("0");
+      setMinWidthPct("0");
       setExitBufferSpacings("5");
       setSlipageBps("50");
-      setMaxRebalancesPerDay("");
-      setMaxRebalancesPerHour("");
+      setMaxRebalancesPerDay("10");
+      setMaxRebalancesPerHour("2");
       setMaxTurnoverToken0("");
       setMaxTurnoverToken1("");
-      setCircuitMaxBaseFeeGwei("");
-setCircuitMovePct("");
-setCircuitTickJump("");
+      setCircuitMaxBaseFeeGwei("9000");
+      setCircuitMovePct("20");
+      setCircuitTickJump("900");
 
       setPrice(0);
       setLastEdited(null);
@@ -426,38 +450,76 @@ setCircuitTickJump("");
     const owed0 = latest.owed0_units || (tickData[bot.bot_id]?.at(-1)?.owed0_units || '0');
     const owed1 = latest.owed1_units || (tickData[bot.bot_id]?.at(-1)?.owed1_units || '0');
     const isProcessing = currentStatus.includes('rebalancing') || currentStatus.includes('minting') || currentStatus.includes('withdrawing');
-const ticks = tickData[bot.bot_id]?.map((d) => d.tick) || [];
-  const lowerTicks = tickData[bot.bot_id]?.map((d) => d.lower_tick) || [];
-  const upperTicks = tickData[bot.bot_id]?.map((d) => d.upper_tick) || [];
-  const allTicks = [...ticks, ...lowerTicks, ...upperTicks];
-  const minTick = allTicks.length > 0 ? Math.min(...allTicks) : 0;
-  const maxTick = allTicks.length > 0 ? Math.max(...allTicks) : 0;
+    const ticks = tickData[bot.bot_id]?.map((d) => d.tick) || [];
+    const lowerTicks = tickData[bot.bot_id]?.map((d) => d.lower_tick) || [];
+    const upperRebal = tickData[bot.bot_id]?.map((d) => d.up_rebal) || [];
+    const downRebal = tickData[bot.bot_id]?.map((d) => d.down_rbal) || [];
 
-  const chartOptions = {
-    responsive: true,
-    maintainAspectRatio: false,
-    scales: {
-      y: {
-        title: { display: true, text: "Tick", color: "#d1d5db" },
-        grid: { color: "rgba(209, 213, 219, 0.1)" },
-        ticks: { color: "#d1d5db" },
-        min: minTick - 100, // Extend lower boundary by 300 ticks
-        max: maxTick + 100, // Extend upper boundary by 300 ticks
-      },
-    },
-    plugins: {
-      legend: { display: true, position: 'top' as const },
-      tooltip: {
-        callbacks: {
-          label: (context: any) => `${context.dataset.label}: ${context.raw.toFixed(0)}`,
+
+    const upperTicks = tickData[bot.bot_id]?.map((d) => d.upper_tick) || [];
+    const allTicks = [...ticks, ...lowerTicks, ...upperTicks,...upperRebal,...downRebal];
+    const minTick = allTicks.length > 0 ? Math.min(...allTicks) : 0;
+    const maxTick = allTicks.length > 0 ? Math.max(...allTicks) : 0;
+
+    const chartOptions = {
+      responsive: true,
+      maintainAspectRatio: false,
+      scales: {
+        y: {
+          title: { display: true, text: "Tick", color: "#d1d5db" },
+          grid: { color: "rgba(209, 213, 219, 0.1)" },
+          ticks: { color: "#d1d5db" },
+          min: minTick - 500, // Extend lower boundary by 300 ticks
+          max: maxTick + 500, // Extend upper boundary by 300 ticks
         },
       },
-    },
-  };  
+      plugins: {
+        legend: { display: true, position: 'top' as const },
+        tooltip: {
+          callbacks: {
+            label: (context: any) => `${context.dataset.label}: ${context.raw.toFixed(0)}`,
+          },
+        },
+      },
+    };
 
     const initialChartData = {
       labels: tickData[bot.bot_id]?.map((d) => '') || [], // Empty labels for time
       datasets: [
+        
+        {
+          label: "Upper Rebal",
+          data: tickData[bot.bot_id]?.map((d) => d.up_rebal) || [],
+          borderColor: "#ffffff",
+          borderDash: [5, 5],
+          pointRadius: 0,
+          fill: false,
+        },
+        {
+          label: "Lower Rebal",
+          data: tickData[bot.bot_id]?.map((d) => d.down_rbal) || [],
+          borderColor: "#ffffff",
+          borderDash: [5, 5],
+          pointRadius: 0,
+          fill: false,
+        },
+        {
+          label: "Lower Tick",
+          data: tickData[bot.bot_id]?.map((d) => d.lower_tick) || [],
+          borderColor: "#22c55e",
+          borderDash: [5, 5],
+          pointRadius: 0,
+          fill: false,
+        },
+        
+        {
+          label: "Upper Tick",
+          data: tickData[bot.bot_id]?.map((d) => d.upper_tick) || [],
+          borderColor: "#22c55e",
+          borderDash: [5, 5],
+          pointRadius: 0,
+          fill: false,
+        },
         {
           label: "Current Tick",
           data: tickData[bot.bot_id]?.map((d) => d.tick) || [],
@@ -473,22 +535,7 @@ const ticks = tickData[bot.bot_id]?.map((d) => d.tick) || [];
           pointRadius: 0,
           pointBackgroundColor: "#3b82f6",
         },
-        {
-          label: "Lower Tick",
-          data: tickData[bot.bot_id]?.map((d) => d.lower_tick) || [],
-          borderColor: "#ef4444",
-          borderDash: [5, 5],
-          pointRadius: 0,
-          fill: false,
-        },
-        {
-          label: "Upper Tick",
-          data: tickData[bot.bot_id]?.map((d) => d.upper_tick) || [],
-          borderColor: "#22c55e",
-          borderDash: [5, 5],
-          pointRadius: 0,
-          fill: false,
-        },
+        
       ],
     };
 
@@ -501,16 +548,23 @@ const ticks = tickData[bot.bot_id]?.map((d) => d.tick) || [];
       const currentTicks = tickData[bot.bot_id]?.map((d) => d.tick) || [];
       const lowerTicks = tickData[bot.bot_id]?.map((d) => d.lower_tick) || [];
       const upperTicks = tickData[bot.bot_id]?.map((d) => d.upper_tick) || [];
+      const upperRebal = tickData[bot.bot_id]?.map((d) => d.up_rebal) || [];
+      const lowerRebal = tickData[bot.bot_id]?.map((d) => d.down_rbal) || [];
+
+
 
       chart.data.labels = labels;
       chart.data.datasets[0].data = currentTicks;
       chart.data.datasets[1].data = lowerTicks;
       chart.data.datasets[2].data = upperTicks;
+      chart.data.datasets[3].data= upperRebal
+      chart.data.datasets[4].data= lowerRebal
+
       chart.update("none"); // 'none' prevents animation for smooth tick movement
     }, [tickData[bot.bot_id]]);
 
     return (
-      <Card  className="">
+      <Card className="">
         <CardHeader>
           <div className="flex justify-between items-center">
             <div className="text-lg font-bold">Bot ID: {bot.bot_id.slice(0, 8)}...</div>
@@ -520,12 +574,13 @@ const ticks = tickData[bot.bot_id]?.map((d) => d.tick) || [];
             </span>
           </div>
         </CardHeader>
-        <CardBody className="space-y-4">
+        <CardBody className="space-y-2">
           <div className="flex items-center space-x-2">
             <span className="text-sm font-semibold">Position ID:</span>
             <span>{currentPositionId ?? 'None'}</span>
           </div>
-          <div className="flex items-center space-x-2">
+          <div className="flex flex-row justify-center items-center align-middle gap-5">
+        <div className="flex items-center space-x-2">
             <Token0Icon className="text-xl text-blue-400" />
             <span className="text-sm font-semibold">{token0Label}:</span>
             <span>{Number(bot.token0_amount).toFixed(3)}</span>
@@ -534,6 +589,9 @@ const ticks = tickData[bot.bot_id]?.map((d) => d.tick) || [];
             <Token1Icon className="text-xl text-blue-400" />
             <span className="text-sm font-semibold">{token1Label}:</span>
             <span>{Number(bot.token1_amount).toFixed(3)}</span>
+          </div>
+         
+
           </div>
           <div className="flex items-center space-x-2">
             <span className="text-sm font-semibold">Fee Tier:</span>
@@ -548,7 +606,7 @@ const ticks = tickData[bot.bot_id]?.map((d) => d.tick) || [];
           </div>
 
           {isActive && tickData[bot.bot_id]?.length > 0 && (
-            <div className="h-40">
+            <div className="h-80">
               <Line ref={chartRef} data={initialChartData} options={chartOptions} />
             </div>
           )}
@@ -782,32 +840,118 @@ const ticks = tickData[bot.bot_id]?.map((d) => d.tick) || [];
                         placeholder="Leave blank for unlimited"
                       />
                       <Input
-  label="Circuit Max Base Fee (gwei)"
-  description="Maximum base fee in gwei before circuit breaker triggers"
-  type="number"
-  value={circuitMaxBaseFeeGwei}
-  onChange={(e) => setCircuitMaxBaseFeeGwei(e.target.value)}
-  placeholder="e.g. 100"
-/>
+                        label="Circuit Max Base Fee (gwei)"
+                        description="Maximum base fee in gwei before circuit breaker triggers"
+                        type="number"
+                        value={circuitMaxBaseFeeGwei}
+                        onChange={(e) => setCircuitMaxBaseFeeGwei(e.target.value)}
+                        placeholder="e.g. 100"
+                      />
 
-<Input
-  label="Circuit Move %"
-  description="Minimum % move to trigger circuit breaker"
-  type="number"
-  value={circuitMovePct}
-  onChange={(e) => setCircuitMovePct(e.target.value)}
-  placeholder="e.g. 2"
-/>
+                      <Input
+                        label="Circuit Move %"
+                        description="Minimum % move to trigger circuit breaker"
+                        type="number"
+                        value={circuitMovePct}
+                        onChange={(e) => setCircuitMovePct(e.target.value)}
+                        placeholder="e.g. 2"
+                      />
 
-<Input
-  label="Circuit Tick Jump"
-  description="Minimum tick jump before rebalancing"
-  type="number"
-  value={circuitTickJump}
-  onChange={(e) => setCircuitTickJump(e.target.value)}
-  placeholder="e.g. 50"
-/>
+                      <Input
+                        label="Circuit Tick Jump"
+                        description="Minimum tick jump before rebalancing"
+                        type="number"
+                        value={circuitTickJump}
+                        onChange={(e) => setCircuitTickJump(e.target.value)}
+                        placeholder="e.g. 50"
+                      />
 
+                    </>
+                  )}
+                  {currentStep === 4 && (
+                    <>
+                      <div className="flex flex-col gap-5">
+                        <div className="flex flex-col gap-5">
+                        <Input
+                                label="Upside Rebal %"
+                                type="number"
+                                value={rebalUp}
+                                onChange={(e) => setRebalUp(e.target.value)}
+                                placeholder="e.g. 20"
+                              />
+                              <Input
+                                label="Downside Rebal %"
+                                type="number"
+                                value={rebalDown}
+                                onChange={(e) => setRebalDown(e.target.value)}
+                                placeholder="e.g. 18"
+                              />
+                        </div>
+                        <div className=" flex flex-row gap-5">
+                          <RadioGroup label="Bot Type" value={botType} onValueChange={setBotType}>
+                            <Radio value="MANUAL">Manual</Radio>
+                            <Radio value="LRPF">LRPF</Radio>
+                          </RadioGroup>
+                        </div>
+                        {
+                          botType == "MANUAL" ?
+                            <div className="flex flex-col gap-2">
+                              <Input
+                                label="Upper Band %"
+                                type="number"
+                                value={upperBand}
+                                onChange={(e) => setUpperBand(e.target.value)}
+                                placeholder="e.g. 20"
+                              />
+                              <Input
+                                label="Lower Band %"
+                                type="number"
+                                value={lowerBand}
+                                onChange={(e) => setLowerBand(e.target.value)}
+                                placeholder="e.g. 18"
+                              />
+
+                            </div>
+                            :
+                            <div className=" flex flex-row gap-5 justify-center align-middle items-center">
+                              <div className="flex flex-col gap-2">
+                                <Input
+                                  label="ATR Period"
+                                  type="number"
+                                  value={atrPeriod}
+                                  onChange={(e) => setAtrPeriod(e.target.value)}
+                                  placeholder="e.g. 14"
+                                />
+                                <Input
+                                  label="Forecast Horizon"
+                                  type="number"
+                                  value={forecastHorizon}
+                                  onChange={(e) => setForecastHorizon(e.target.value)}
+                                  placeholder="e.g. 7"
+                                />
+                              </div>
+                              <div className="flex flex-col gap-2">
+                                <Input
+                                  label="Band Coverage"
+                                  type="number"
+                                  value={bandCoverage}
+                                  onChange={(e) => setBandCoverage(e.target.value)}
+                                  placeholder="e.g. 0.90"
+                                />
+                                <Input
+                                  label="Vol Multiplier"
+                                  type="number"
+                                  value={volMul}
+                                  onChange={(e) => setVolMul(e.target.value)}
+                                  placeholder="e.g. 0.90"
+                                />
+                              </div>
+
+
+                            </div>
+                        }
+
+                      </div>
                     </>
                   )}
                 </ModalBody>
@@ -831,7 +975,8 @@ const ticks = tickData[bot.bot_id]?.map((d) => d.tick) || [];
                         Next
                       </Button>
                     </>
-                  ) : (
+                  ) : currentStep === 3 ?
+
                     <>
                       <Button
                         onPress={() => setCurrentStep(2)}
@@ -839,14 +984,28 @@ const ticks = tickData[bot.bot_id]?.map((d) => d.tick) || [];
                         Back
                       </Button>
                       <Button
-                        onPress={handleStartBot}
-                        isLoading={loading}
-                        color="primary"
+                        onPress={() => setCurrentStep(4)}
                       >
-                        {loading ? null : "Start Bot"}
+                        Next
                       </Button>
                     </>
-                  )}
+                    :
+                    (
+                      <>
+                        <Button
+                          onPress={() => setCurrentStep(3)}
+                        >
+                          Back
+                        </Button>
+                        <Button
+                          onPress={handleStartBot}
+                          isLoading={loading}
+                          color="primary"
+                        >
+                          {loading ? null : "Start Bot"}
+                        </Button>
+                      </>
+                    )}
                 </ModalFooter>
               </>
             )}
@@ -858,7 +1017,7 @@ const ticks = tickData[bot.bot_id]?.map((d) => d.tick) || [];
         ) : (
           <Tabs fullWidth variant="underlined" aria-label="Bot Status Tabs" className="mb-8">
             <Tab key="active" title="Active Bots">
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-2 gap-6">
                 {activeBots.map((bot) => <BotCard key={bot.bot_id} bot={bot} isActive={true} />)}
                 {activeBots.length === 0 && <p className="text-gray-400">No active bots</p>}
               </div>
