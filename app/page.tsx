@@ -99,6 +99,8 @@ const PoolABI = [
 
 export default function BotDashboard() {
   const { isOpen, onOpen, onClose } = useDisclosure();
+    const { isOpen:isOpenWithdraw, onOpen:onOpenWithdraw, onClose:onCloseWithdraw } = useDisclosure();
+
   const [activeBots, setActiveBots] = useState<ActiveBot[]>([]);
   const [unactiveBots, setUnactiveBots] = useState<ActiveBot[]>([]);
   const [loading, setLoading] = useState(true);
@@ -650,7 +652,28 @@ export default function BotDashboard() {
     );
   };
 
+  const withdrawLiquidityManual = async ()=>{
+    try{
+      setIsLoadingWithdraw(true)
+    const response =await clientApiService.get<any>(`/bot/withdraw-manual?position_id=${positionId}`,false,"no-cache")
+      if(response){
+           addToast({
+            title: "Success",
+            description: `${response}`,
+            timeout: 5000,
+            shouldShowTimeoutProgress: true,
+          });
+      }
+      
+    }
+    catch(e){
+      console.log(e)
+    }
+    setIsLoadingWithdraw(false)
+  }
 
+const [positionId,setPositionId]=useState("")
+const [isLoadingWithdraw,setIsLoadingWithdraw]=useState(false)
   return (
     <div>
       <div>
@@ -658,13 +681,48 @@ export default function BotDashboard() {
           <h1 className="text-4xl font-bold  ">Liquidity Bot Dashboard</h1>
           <ThemeSwitch />
         </div>
-
-        <Button
+<div className=" flex flex-row gap-10">
+<Button
           onPress={onOpen}
           className="mb-8"
         >
           <Plus className="mr-2" /> Add New Bot
         </Button>
+        <Button
+        onPress={onOpenWithdraw}
+        
+        >Manual Withdraw
+        </Button>
+</div>
+        <Modal isOpen={isOpenWithdraw} onClose={onCloseWithdraw}>
+          <ModalContent>
+            {()=>(
+              <>
+              <ModalHeader>
+                Manual Withdraw
+              </ModalHeader>
+              <ModalBody>
+              <div className="flex flex-col gap-5">
+              <Input
+                        label={`Position ID`}
+                        description={`Enter the Position ID to withdraw`}
+                        type="number"
+                        isDisabled={isLoadingWithdraw}
+                        value={positionId}
+                        onChange={(e) => {
+                         setPositionId(e.target.value)
+                        }}
+                      />
+                      <Button isLoading={isLoadingWithdraw} color="danger" onPress={async ()=> await withdrawLiquidityManual()} >
+                        Withdraw
+                      </Button>
+              </div>
+              </ModalBody>
+              </>
+            )}
+          </ModalContent>
+
+        </Modal>
 
         <Modal
           backdrop="blur"
@@ -672,20 +730,6 @@ export default function BotDashboard() {
           isOpen={isOpen}
           onClose={() => {
             onClose();
-            setCurrentStep(1);
-            setAmount0("");
-            setAmount1("");
-            setCooldownSec("3600");
-            setMinWidthSpacings("10");
-            setMinWidthPct("0.05");
-            setExitBufferSpacings("5");
-            setSlipageBps("50");
-            setMaxRebalancesPerDay("");
-            setMaxRebalancesPerHour("");
-            setMaxTurnoverToken0("");
-            setMaxTurnoverToken1("");
-            setPrice(0);
-            setLastEdited(null);
           }}
           className=""
         >
@@ -1011,6 +1055,8 @@ export default function BotDashboard() {
             )}
           </ModalContent>
         </Modal>
+
+        
 
         {loading ? (
           <div className="flex justify-center"><Loader2 className="animate-spin text-blue-500 size-12" /></div>
