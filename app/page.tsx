@@ -992,7 +992,7 @@ export default function BotDashboard() {
                           variant="bordered"
                         />
                         <Input
-                          label="Band Coverage"
+                          label="P Target"
                           type="number"
                           value={bandCoverage}
                           onChange={(e) => setBandCoverage(e.target.value)}
