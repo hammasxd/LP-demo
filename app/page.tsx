@@ -8,8 +8,11 @@ import { Card, CardBody, CardFooter, CardHeader } from "@heroui/card";
 import { Modal, ModalContent, ModalHeader, ModalBody, ModalFooter, useDisclosure } from "@heroui/modal";
 import { Tabs, Tab } from "@heroui/tabs";
 import { addToast } from "@heroui/toast";
-import { Loader2, Plus, Play, StopCircle, DollarSign } from "lucide-react";
+import { Loader2, Plus, Play, StopCircle, DollarSign, Wallet, BarChart2 } from "lucide-react";
 import { RadioGroup, Radio } from "@heroui/radio";
+import { Progress } from "@heroui/progress";
+import { Chip } from "@heroui/chip";
+import { Avatar } from "@heroui/avatar";
 
 import { ThemeSwitch } from "@/components/theme-switch";
 import clientApiService, { ActiveBot } from "@/services/client-api-service";
@@ -41,8 +44,8 @@ interface TickData {
   y: number; // Normalized tick (0 to 1)
   tick: number; // Actual tick value
   lower_tick: number;
-  down_rbal:number;
-  up_rebal:number;
+  down_rbal: number;
+  up_rebal: number;
   upper_tick: number;
   owed0_units: string;
   owed1_units: string;
@@ -99,7 +102,7 @@ const PoolABI = [
 
 export default function BotDashboard() {
   const { isOpen, onOpen, onClose } = useDisclosure();
-    const { isOpen:isOpenWithdraw, onOpen:onOpenWithdraw, onClose:onCloseWithdraw } = useDisclosure();
+  const { isOpen: isOpenWithdraw, onOpen: onOpenWithdraw, onClose: onCloseWithdraw } = useDisclosure();
 
   const [activeBots, setActiveBots] = useState<ActiveBot[]>([]);
   const [unactiveBots, setUnactiveBots] = useState<ActiveBot[]>([]);
@@ -111,9 +114,9 @@ export default function BotDashboard() {
   const [feeTier, setFeeTier] = useState("500");
   const [amount0, setAmount0] = useState("");
   const [amount1, setAmount1] = useState("");
-  const [cooldownSec, setCooldownSec] = useState("3600");
-  const [minWidthSpacings, setMinWidthSpacings] = useState("10");
-  const [minWidthPct, setMinWidthPct] = useState("0.05");
+  const [cooldownSec, setCooldownSec] = useState("300");
+  const [minWidthSpacings, setMinWidthSpacings] = useState("0");
+  const [minWidthPct, setMinWidthPct] = useState("0");
   const [exitBufferSpacings, setExitBufferSpacings] = useState("5");
   const [slipageBps, setSlipageBps] = useState("50");
   const [maxRebalancesPerDay, setMaxRebalancesPerDay] = useState("");
@@ -124,14 +127,14 @@ export default function BotDashboard() {
   const [circuitMovePct, setCircuitMovePct] = useState("");
   const [circuitTickJump, setCircuitTickJump] = useState("");
   const [botType, setBotType] = useState("MANUAL")
-  const [atrPeriod, setAtrPeriod] = useState("")
-  const [forecastHorizon, setForecastHorizon] = useState("")
-  const [bandCoverage, setBandCoverage] = useState("")
-  const [volMul, setVolMul] = useState("")
-  const [upperBand, setUpperBand] = useState("")
-  const [lowerBand, setLowerBand] = useState("")
-  const [rebalUp, setRebalUp] = useState("")
-  const [rebalDown, setRebalDown] = useState("")
+  const [atrPeriod, setAtrPeriod] = useState("14")
+  const [forecastHorizon, setForecastHorizon] = useState("7")
+  const [bandCoverage, setBandCoverage] = useState("0.90")
+  const [volMul, setVolMul] = useState("0.90")
+  const [upperBand, setUpperBand] = useState("20")
+  const [lowerBand, setLowerBand] = useState("18")
+  const [rebalUp, setRebalUp] = useState("20")
+  const [rebalDown, setRebalDown] = useState("18")
 
 
   const [price, setPrice] = useState(0);
@@ -139,6 +142,38 @@ export default function BotDashboard() {
   const [tickData, setTickData] = useState<{ [bot_id: string]: TickData[] }>({});
   const [latestBotData, setLatestBotData] = useState<{ [bot_id: string]: Partial<TickData> }>({});
   const wsRef = useRef<WebSocket | null>(null);
+  const [balances, setBalances] = useState<{ [key: string]: number }>({});
+
+  const getBalance = async (native = false, address?: string) => {
+    const response = await clientApiService.post<any>(`/bot/getBalance?tokenAddress=${native ? "0x0000000000000000000000000000000000000000" : address}`, {}, false, "no-cache")
+      console.log("response.data.tokenBalance : ",response.data.tokenBalance)
+            console.log("(response as any) : ",(response as any))
+
+    if (response.data.tokenBalance) {
+      console.log("response.data.tokenBalance : ",response.data.tokenBalance)
+      return response.data.tokenBalance
+    }
+    else return 0
+  }
+  useEffect(() => {
+    const fetchBalances = async () => {
+      try {
+        const ethBalance = await getBalance(true);
+        const token0Balance = await getBalance(false, token0);
+        const token1Balance = await getBalance(false, token1);
+
+        setBalances({
+          eth: ethBalance,
+          [token0]: token0Balance,
+          [token1]: token1Balance,
+        });
+      } catch (err) {
+        console.error("Failed to fetch balances", err);
+      }
+    };
+
+    fetchBalances();
+  }, [token0, token1]);
 
   const tokens: Token[] = [
     { label: "USDC", value: "0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238", icon: USDCIcon },
@@ -214,7 +249,7 @@ export default function BotDashboard() {
   }, []);
 
   const getPriceInToken0PerToken1 = async () => {
-    const provider = new ethers.JsonRpcProvider("https://sepolia.infura.io/v3/09d83155055445d08c5e7becc22e18e3");
+    const provider = new ethers.JsonRpcProvider("https://sepolia.infura.io/v3/54de27f3c9a641c790c667b446514c13");
     const factory = new ethers.Contract(FACTORY_ADDRESS, FactoryABI, provider);
     const poolAddress = await factory.getPool(token0, token1, Number(feeTier));
     if (poolAddress === ethers.ZeroAddress) {
@@ -271,35 +306,35 @@ export default function BotDashboard() {
   const handleStartBot = async () => {
     setLoading(true);
     try {
-    const payload = {
-    token0_address: token0,
-    token1_address: token1,
-    token0_amount: parseFloat(amount0),
-    token1_amount: parseFloat(amount1),
-    POOL_FEE: parseInt(feeTier),
-    COOLDOWN_SEC: Number(cooldownSec),
-    MIN_WIDTH_SPACINGS: Number(minWidthSpacings),
-    MIN_WIDTH_PCT: Number(minWidthPct),
-    EXIT_BUFFER_SPACINGS: Number(exitBufferSpacings),
-    slipage_bps: Number(slipageBps),
-    max_rebalances_per_day: maxRebalancesPerDay ? Number(maxRebalancesPerDay) : null,
-    max_rebalances_per_hour: maxRebalancesPerHour ? Number(maxRebalancesPerHour) : null,
-    max_turnover_token0_24h: maxTurnoverToken0 ? Number(maxTurnoverToken0) : null,
-    max_turnover_token1_24h: maxTurnoverToken1 ? Number(maxTurnoverToken1) : null,
-    circuit_max_base_fee_gwei: circuitMaxBaseFeeGwei ? Number(circuitMaxBaseFeeGwei) : null,
-    circuit_move_pct: circuitMovePct ? Number(circuitMovePct) : null,
-    circuit_tick_jump: circuitTickJump ? Number(circuitTickJump) : null,
-    bot_type: botType || "MAN",
-    manual_upper_band: upperBand ? Number(upperBand) : null,
-    manual_lower_band_pct: lowerBand ? Number(lowerBand) : null,
-    VOL_MULT: volMul ? Number(volMul) : 1.0,
-    P_TARGET: bandCoverage ? Number(bandCoverage) : 1.0,
-    ATR_PERIOD_DAYS: atrPeriod ? Number(atrPeriod) : 7,
-    HORIZON_DAYS: forecastHorizon ? Number(forecastHorizon) : 7,
-    SIGMA_FACTOR: bandCoverage ? Number(bandCoverage) : 1.0,
-    downside_rebal_pct: rebalDown ? Number(rebalDown) : null,
-    upside_rebal_pct: rebalUp ? Number(rebalUp) : null,
-};
+      const payload = {
+        token0_address: token0,
+        token1_address: token1,
+        token0_amount: parseFloat(amount0),
+        token1_amount: parseFloat(amount1),
+        POOL_FEE: parseInt(feeTier),
+        COOLDOWN_SEC: Number(cooldownSec),
+        MIN_WIDTH_SPACINGS: Number(minWidthSpacings),
+        MIN_WIDTH_PCT: Number(minWidthPct),
+        EXIT_BUFFER_SPACINGS: Number(exitBufferSpacings),
+        slipage_bps: Number(slipageBps),
+        max_rebalances_per_day: maxRebalancesPerDay ? Number(maxRebalancesPerDay) : undefined,
+        max_rebalances_per_hour: maxRebalancesPerHour ? Number(maxRebalancesPerHour) : undefined,
+        max_turnover_token0_24h: maxTurnoverToken0 ? Number(maxTurnoverToken0) : undefined,
+        max_turnover_token1_24h: maxTurnoverToken1 ? Number(maxTurnoverToken1) : undefined,
+        circuit_max_base_fee_gwei: circuitMaxBaseFeeGwei ? Number(circuitMaxBaseFeeGwei) : undefined,
+        circuit_move_pct: circuitMovePct ? Number(circuitMovePct) : undefined,
+        circuit_tick_jump: circuitTickJump ? Number(circuitTickJump) : undefined,
+        bot_type: botType || "MAN",
+        manual_upper_band: upperBand ? Number(upperBand) : undefined,
+        manual_lower_band_pct: lowerBand ? Number(lowerBand) : undefined,
+        VOL_MULT: volMul ? Number(volMul) : 1.0,
+        P_TARGET: bandCoverage ? Number(bandCoverage) : 1.0,
+        ATR_PERIOD_DAYS: atrPeriod ? Number(atrPeriod) : 7,
+        HORIZON_DAYS: forecastHorizon ? Number(forecastHorizon) : 7,
+        SIGMA_FACTOR: bandCoverage ? Number(bandCoverage) : 1.0,
+        downside_rebal_pct: rebalDown ? Number(rebalDown) : undefined,
+        upside_rebal_pct: rebalUp ? Number(rebalUp) : undefined,
+      };
 
       const response = await clientApiService.startBot(payload);
       addToast({
@@ -428,16 +463,19 @@ export default function BotDashboard() {
       setButtonLoading((prev) => ({ ...prev, [botId]: { ...prev[botId], withdraw: false } }));
     }
   };
-
+  
   const getStatusColor = (status: string) => {
-    if (status.includes('active')) return 'bg-green-500/20 text-green-400';
-    if (status.includes('rebalancing') || status.includes('minting') || status.includes('withdrawing')) return 'bg-yellow-500/20 text-yellow-400';
-    if (status.includes('error')) return 'bg-red-500/20 text-red-400';
-    if (status.includes('stopped') || status.includes('withdrawn')) return 'bg-gray-500/20 text-gray-400';
-    return 'bg-blue-500/20 text-blue-400';
+    if (status.includes('active')) return 'success';
+    if (status.includes('rebalancing') || status.includes('minting') || status.includes('withdrawing')) return 'warning';
+    if (status.includes('error')) return 'danger';
+    if (status.includes('stopped') || status.includes('withdrawn')) return 'default';
+    return 'primary';
   };
 
   const BotCard = ({ bot, isActive }: { bot: ActiveBot; isActive: boolean }) => {
+    const getIsDiabled=(status: string)=>{
+    if ( status.includes('withdrawn')) return true
+  }
     const token0Info = tokens.find((t) => t.value === bot.token0_address);
     const token1Info = tokens.find((t) => t.value === bot.token1_address);
     const token0Label = token0Info?.label || bot.token0_address.slice(0, 6);
@@ -459,7 +497,7 @@ export default function BotDashboard() {
 
 
     const upperTicks = tickData[bot.bot_id]?.map((d) => d.upper_tick) || [];
-    const allTicks = [...ticks, ...lowerTicks, ...upperTicks,...upperRebal,...downRebal];
+    const allTicks = [...ticks, ...lowerTicks, ...upperTicks, ...upperRebal, ...downRebal];
     const minTick = allTicks.length > 0 ? Math.min(...allTicks) : 0;
     const maxTick = allTicks.length > 0 ? Math.max(...allTicks) : 0;
 
@@ -467,20 +505,31 @@ export default function BotDashboard() {
       responsive: true,
       maintainAspectRatio: false,
       scales: {
+        x: {
+          display: false,
+        },
         y: {
-          title: { display: true, text: "Tick", color: "#d1d5db" },
-          grid: { color: "rgba(209, 213, 219, 0.1)" },
-          ticks: { color: "#d1d5db" },
-          min: minTick - 500, // Extend lower boundary by 300 ticks
-          max: maxTick + 500, // Extend upper boundary by 300 ticks
+          title: { display: false },
+          grid: { display: false },
+          ticks: { display: false },
+          min: minTick - 500,
+          max: maxTick + 500,
         },
       },
       plugins: {
-        legend: { display: true, position: 'top' as const },
+        legend: { display: false },
         tooltip: {
-          callbacks: {
-            label: (context: any) => `${context.dataset.label}: ${context.raw.toFixed(0)}`,
-          },
+          enabled: true,
+          mode: 'index' as const,
+          intersect: false,
+        },
+      },
+      elements: {
+        line: {
+          tension: 0.4,
+        },
+        point: {
+          radius: 0,
         },
       },
     };
@@ -488,60 +537,49 @@ export default function BotDashboard() {
     const initialChartData = {
       labels: tickData[bot.bot_id]?.map((d) => '') || [], // Empty labels for time
       datasets: [
-        
         {
-          label: "Upper Rebal",
-          data: tickData[bot.bot_id]?.map((d) => d.up_rebal) || [],
-          borderColor: "#ffffff",
-          borderDash: [5, 5],
-          pointRadius: 0,
-          fill: false,
+          label: "Current Tick",
+          data: tickData[bot.bot_id]?.map((d) => d.tick) || [],
+          borderColor: "#818cf8",
+          backgroundColor: (ctx: any) => {
+            const gradient = ctx.chart.ctx.createLinearGradient(0, 0, 0, 200);
+            gradient.addColorStop(0, "rgba(129, 140, 248, 0.4)");
+            gradient.addColorStop(1, "rgba(129, 140, 248, 0)");
+            return gradient;
+          },
+          fill: true,
         },
         {
-          label: "Lower Rebal",
-          data: tickData[bot.bot_id]?.map((d) => d.down_rbal) || [],
-          borderColor: "#ffffff",
-          borderDash: [5, 5],
-          pointRadius: 0,
+          label: "Upper Tick",
+          data: tickData[bot.bot_id]?.map((d) => d.upper_tick) || [],
+          borderColor: "#34d399",
+          borderDash: [4, 4],
           fill: false,
         },
         {
           label: "Lower Tick",
           data: tickData[bot.bot_id]?.map((d) => d.lower_tick) || [],
-          borderColor: "#22c55e",
-          borderDash: [5, 5],
-          pointRadius: 0,
-          fill: false,
-        },
-        
-        {
-          label: "Upper Tick",
-          data: tickData[bot.bot_id]?.map((d) => d.upper_tick) || [],
-          borderColor: "#22c55e",
-          borderDash: [5, 5],
-          pointRadius: 0,
+          borderColor: "#34d399",
+          borderDash: [4, 4],
           fill: false,
         },
         {
-          label: "Current Tick",
-          data: tickData[bot.bot_id]?.map((d) => d.tick) || [],
-          borderColor: "#3b82f6",
-          backgroundColor: (ctx: any) => {
-            const gradient = ctx.chart.ctx.createLinearGradient(0, 0, 0, 150);
-            gradient.addColorStop(0, "rgba(59, 130, 246, 0.4)");
-            gradient.addColorStop(1, "rgba(59, 130, 246, 0)");
-            return gradient;
-          },
-          fill: true,
-          tension: 0.4,
-          pointRadius: 0,
-          pointBackgroundColor: "#3b82f6",
+          label: "Upper Rebal",
+          data: tickData[bot.bot_id]?.map((d) => d.up_rebal) || [],
+          borderColor: "#a78bfa",
+          borderDash: [2, 2],
+          fill: false,
         },
-        
+        {
+          label: "Lower Rebal",
+          data: tickData[bot.bot_id]?.map((d) => d.down_rbal) || [],
+          borderColor: "#a78bfa",
+          borderDash: [2, 2],
+          fill: false,
+        },
       ],
     };
 
-    // Efficiently update chart data when new ticks arrive
     useEffect(() => {
       if (!chartRef.current) return;
       const chart = chartRef.current;
@@ -557,92 +595,91 @@ export default function BotDashboard() {
 
       chart.data.labels = labels;
       chart.data.datasets[0].data = currentTicks;
-      chart.data.datasets[1].data = lowerTicks;
-      chart.data.datasets[2].data = upperTicks;
-      chart.data.datasets[3].data= upperRebal
-      chart.data.datasets[4].data= lowerRebal
+      chart.data.datasets[1].data = upperTicks;
+      chart.data.datasets[2].data = lowerTicks;
+      chart.data.datasets[3].data = upperRebal;
+      chart.data.datasets[4].data = lowerRebal;
 
       chart.update("none"); // 'none' prevents animation for smooth tick movement
     }, [tickData[bot.bot_id]]);
 
     return (
-      <Card className="">
-        <CardHeader>
-          <div className="flex justify-between items-center">
-            <div className="text-lg font-bold">Bot ID: {bot.bot_id.slice(0, 8)}...</div>
-            <span className={`text-sm px-2 py-1 rounded-full ${getStatusColor(currentStatus)}`}>
-              {isProcessing ? <Loader2 className="inline mr-1 animate-spin" size={14} /> : null}
-              {currentStatus}
-            </span>
+      <Card className="overflow-hidden rounded-2xl shadow-xl border-0 bg-white dark:bg-gray-800 transition-all hover:scale-105 hover:shadow-2xl">
+        <CardHeader className="flex justify-between items-start p-6 bg-gradient-to-r from-indigo-500 to-purple-500 text-white">
+          <div>
+            <h3 className="text-lg font-bold">Bot {bot.bot_id.slice(0, 8)}</h3>
+            <p className="text-sm opacity-80">Position #{currentPositionId ?? 'N/A'}</p>
           </div>
+          <Chip color={getStatusColor(currentStatus)} variant="shadow" size="sm" startContent={isProcessing ? <Loader2 className="animate-spin" size={14} /> : null}>
+            {currentStatus.toUpperCase()}
+          </Chip>
         </CardHeader>
-        <CardBody className="space-y-2">
-          <div className="flex items-center space-x-2">
-            <span className="text-sm font-semibold">Position ID:</span>
-            <span>{currentPositionId ?? 'None'}</span>
+        <CardBody className="p-6 space-y-4">
+          <div className="flex justify-between items-center">
+            <div className="flex items-center space-x-3">
+              <Avatar src="/usd-coin-usdc-logo.png" className="bg-indigo-100 dark:bg-indigo-900"/>
+              
+              <div>
+                <p className="text-sm font-medium text-gray-500 dark:text-gray-400">{token0Label}</p>
+                <p className="font-bold">{Number(bot.token0_amount).toFixed(3)}</p>
+              </div>
+            </div>
+            <div className="flex items-center space-x-3">
+              <Avatar src="/ethereum-eth-logo.png" className="bg-indigo-100 dark:bg-indigo-900"/>
+                
+              <div>
+                <p className="text-sm font-medium text-gray-500 dark:text-gray-400">{token1Label}</p>
+                <p className="font-bold">{Number(bot.token1_amount).toFixed(3)}</p>
+              </div>
+            </div>
           </div>
-          <div className="flex flex-row justify-center items-center align-middle gap-5">
-        <div className="flex items-center space-x-2">
-            <Token0Icon className="text-xl text-blue-400" />
-            <span className="text-sm font-semibold">{token0Label}:</span>
-            <span>{Number(bot.token0_amount).toFixed(3)}</span>
+          <div className="flex justify-between text-sm">
+            <span className="text-gray-500 dark:text-gray-400">Fee Tier</span>
+            <span className="font-medium">{bot.POOL_FEE / 10000}%</span>
           </div>
-          <div className="flex items-center space-x-2">
-            <Token1Icon className="text-xl text-blue-400" />
-            <span className="text-sm font-semibold">{token1Label}:</span>
-            <span>{Number(bot.token1_amount).toFixed(3)}</span>
-          </div>
-         
-
-          </div>
-          <div className="flex items-center space-x-2">
-            <span className="text-sm font-semibold">Fee Tier:</span>
-            <span>{bot.POOL_FEE / 10000}%</span>
-          </div>
-          <div className="flex items-center space-x-2">
-            <span className="text-sm font-semibold">Earned Fees:</span>
-            <span>
-              {Number(owed0).toFixed(6)} {token0Label},{" "}
-              {Number(owed1).toFixed(6)} {token1Label}
+          <div className="flex justify-between text-sm">
+            <span className="text-gray-500 dark:text-gray-400">Earned Fees</span>
+            <span className="font-medium">
+              {Number(owed0).toFixed(6)} {token0Label} / {Number(owed1).toFixed(6)} {token1Label}
             </span>
           </div>
-
           {isActive && tickData[bot.bot_id]?.length > 0 && (
-            <div className="h-80">
+            <div className="h-40 bg-gray-50 dark:bg-gray-900 rounded-xl p-2">
               <Line ref={chartRef} data={initialChartData} options={chartOptions} />
             </div>
           )}
         </CardBody>
-
-        <CardFooter className="flex justify-end space-x-2">
+        <CardFooter className="p-6 flex justify-end space-x-3 bg-gray-50 dark:bg-gray-900">
           {isActive ? (
             <Button
-              size="sm"
+              color="danger"
+              variant="flat"
               onPress={() => handleStopBot(bot.bot_id)}
               isLoading={buttonLoading[bot.bot_id]?.stop}
-              color="danger"
+              startContent={!buttonLoading[bot.bot_id]?.stop && <StopCircle size={16} />}
             >
-              {!buttonLoading[bot.bot_id]?.stop && <StopCircle className="mr-1" />}
               Stop
             </Button>
           ) : (
             <>
               <Button
-                size="sm"
+                color="success"
+                variant="flat"
+                isDisabled={getIsDiabled(bot.status)}
                 onPress={() => handleResumeBot(bot.bot_id)}
                 isLoading={buttonLoading[bot.bot_id]?.resume}
-                color="success"
+                startContent={!buttonLoading[bot.bot_id]?.resume && <Play size={16} />}
               >
-                {!buttonLoading[bot.bot_id]?.resume && <Play className="mr-1" />}
                 Resume
               </Button>
               <Button
-                size="sm"
+                color="primary"
+                variant="flat"
+                isDisabled={getIsDiabled(bot.status)}
                 onPress={() => handleWithdrawBot(bot.bot_id)}
                 isLoading={buttonLoading[bot.bot_id]?.withdraw}
-                color="primary"
+                startContent={!buttonLoading[bot.bot_id]?.withdraw && <DollarSign size={16} />}
               >
-                {!buttonLoading[bot.bot_id]?.withdraw && <DollarSign className="mr-1" />}
                 Withdraw
               </Button>
             </>
@@ -652,426 +689,362 @@ export default function BotDashboard() {
     );
   };
 
-  const withdrawLiquidityManual = async ()=>{
-    try{
+  const withdrawLiquidityManual = async () => {
+    try {
       setIsLoadingWithdraw(true)
-    const response =await clientApiService.get<any>(`/bot/withdraw-manual?position_id=${positionId}`,false,"no-cache")
-      if(response){
-           addToast({
-            title: "Success",
-            description: `${response}`,
-            timeout: 5000,
-            shouldShowTimeoutProgress: true,
-          });
+      const response = await clientApiService.post<any>(`/bot/withdraw-manual?position_id=${positionId}`, {}, false, "no-cache")
+      if (response) {
+        addToast({
+          title: "Success",
+          description: `${response}`,
+          timeout: 5000,
+          shouldShowTimeoutProgress: true,
+        });
+        onCloseWithdraw()
       }
-      
+
     }
-    catch(e){
+    catch (e) {
       console.log(e)
     }
     setIsLoadingWithdraw(false)
   }
 
-const [positionId,setPositionId]=useState("")
-const [isLoadingWithdraw,setIsLoadingWithdraw]=useState(false)
+  const [positionId, setPositionId] = useState("")
+  const [isLoadingWithdraw, setIsLoadingWithdraw] = useState(false)
   return (
-    <div>
-      <div>
-        <div className="flex justify-between items-center mb-8">
-          <h1 className="text-4xl font-bold  ">Liquidity Bot Dashboard</h1>
+    <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 dark:from-gray-900 dark:to-gray-800 p-8">
+      <div className="max-w-7xl mx-auto">
+        <div className="flex items-center justify-between mb-8">
+          <h1 className="text-4xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-indigo-600 to-purple-600 dark:from-indigo-400 dark:to-purple-400">
+            Liquidity Bot Control Center
+          </h1>
           <ThemeSwitch />
         </div>
-<div className=" flex flex-row gap-10">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
+          <Card className="col-span-1 bg-white dark:bg-gray-800 rounded-2xl shadow-md p-4 flex items-center space-x-4">
+            <Avatar className="bg-indigo-100 dark:bg-indigo-900">
+              <Wallet className="text-indigo-500" size={20} />
+            </Avatar>
+            <div>
+              <p className="text-sm text-gray-500 dark:text-gray-400">ETH Balance</p>
+              <p className="font-bold text-lg">{Number(balances.eth)?.toFixed(4) ?? "0.00"}</p>
+            </div>
+          </Card>
+          <div className="flex flex-col justify-between ">
 <Button
-          onPress={onOpen}
-          className="mb-8"
-        >
-          <Plus className="mr-2" /> Add New Bot
-        </Button>
-        <Button
-        onPress={onOpenWithdraw}
-        
-        >Manual Withdraw
-        </Button>
-</div>
-        <Modal isOpen={isOpenWithdraw} onClose={onCloseWithdraw}>
+            color="primary"
+            variant="shadow"
+            onPress={onOpen}
+            className="rounded-2xl"
+            startContent={<Plus size={20} />}
+          >
+            Deploy New Bot
+          </Button>
+          <Button
+            color="secondary"
+            variant="shadow"
+            onPress={onOpenWithdraw}
+            className="rounded-2xl"
+            startContent={<DollarSign size={20} />}
+          >
+            Manual Withdraw
+          </Button>
+          </div>
+          
+        </div>
+        <Modal isOpen={isOpenWithdraw} onClose={onCloseWithdraw} size="md" backdrop="blur">
           <ModalContent>
-            {()=>(
-              <>
-              <ModalHeader>
-                Manual Withdraw
-              </ModalHeader>
-              <ModalBody>
-              <div className="flex flex-col gap-5">
+            <ModalHeader className="text-2xl font-bold">Manual Liquidity Withdrawal</ModalHeader>
+            <ModalBody>
               <Input
-                        label={`Position ID`}
-                        description={`Enter the Position ID to withdraw`}
-                        type="number"
-                        isDisabled={isLoadingWithdraw}
-                        value={positionId}
-                        onChange={(e) => {
-                         setPositionId(e.target.value)
-                        }}
-                      />
-                      <Button isLoading={isLoadingWithdraw} color="danger" onPress={async ()=> await withdrawLiquidityManual()} >
-                        Withdraw
-                      </Button>
-              </div>
-              </ModalBody>
-              </>
-            )}
+                label="Position ID"
+                placeholder="Enter position ID"
+                type="number"
+                value={positionId}
+                onChange={(e) => setPositionId(e.target.value)}
+                variant="bordered"
+                description="Withdraw liquidity from a specific position"
+              />
+            </ModalBody>
+            <ModalFooter>
+              <Button variant="light" onPress={onCloseWithdraw}>Cancel</Button>
+              <Button color="danger" isLoading={isLoadingWithdraw} onPress={withdrawLiquidityManual}>Withdraw</Button>
+            </ModalFooter>
           </ModalContent>
-
         </Modal>
 
-        <Modal
-          backdrop="blur"
-          scrollBehavior="inside"
-          isOpen={isOpen}
-          onClose={() => {
-            onClose();
-          }}
-          className=""
-        >
+        <Modal isOpen={isOpen} onClose={onClose} size="xl" backdrop="blur" scrollBehavior="inside">
           <ModalContent>
-            {() => (
-              <>
-                <ModalHeader className=" text-2xl font-bold">Add New Liquidity Bot</ModalHeader>
-                <ModalBody className="space-y-4">
-                  {currentStep === 1 && (
-                    <>
-                      <Select
-                        label="Token 0"
-                        description="Select the first token for the liquidity pair"
-                        selectedKeys={[token0]}
-                        isDisabled
-                        onSelectionChange={(keys) => setToken0(Array.from(keys)[0] as string)}
-                        startContent={<div className="flex items-center">{tokens.find(t => t.value === token0)?.icon({ className: "text-xl" })}</div>}
-                      >
-                        {tokens.map((t) => (
-                          <SelectItem key={t.value} startContent={<t.icon className="text-xl" />}>
-                            {t.label}
-                          </SelectItem>
-                        ))}
-                      </Select>
-                      <Select
-                        label="Token 1"
-                        description="Select the second token for the liquidity pair"
-                        selectedKeys={[token1]}
-                        isDisabled
-                        onSelectionChange={(keys) => setToken1(Array.from(keys)[0] as string)}
-                        startContent={<div className="flex items-center">{tokens.find(t => t.value === token1)?.icon({ className: "text-xl " })}</div>}
-                      >
-                        {tokens.map((t) => (
-                          <SelectItem key={t.value} startContent={<t.icon className="text-xl " />}>
-                            {t.label}
-                          </SelectItem>
-                        ))}
-                      </Select>
-                      <Select
-                        label="Fee Tier"
-                        description="Choose the fee tier that suits your strategy"
-                        selectedKeys={[feeTier]}
-                        onSelectionChange={(keys) => setFeeTier(Array.from(keys)[0] as string)}
-                      >
-                        {feeTiers.map((f) => (
-                          <SelectItem key={f.value}>{f.label}</SelectItem>
-                        ))}
-                      </Select>
-                    </>
-                  )}
-                  {currentStep === 2 && (
-                    <>
-                      <Input
-                        label={`Amount of ${tokens.find((t) => t.value === token0)?.label}`}
-                        description={`Enter the amount of ${tokens.find((t) => t.value === token0)?.label} to provide`}
-                        type="number"
-                        value={amount0}
-                        onChange={(e) => {
-                          setAmount0(e.target.value);
-                          setLastEdited('amount0');
-                        }}
-                        endContent={<span className="text-default-400 text-small">{tokens.find((t) => t.value === token0)?.label}</span>}
-                        placeholder="0.00"
-                      />
-                      <Input
-                        label={`Amount of ${tokens.find((t) => t.value === token1)?.label}`}
-                        description={`Enter the amount of ${tokens.find((t) => t.value === token1)?.label} to provide`}
-                        type="number"
-                        value={amount1}
-                        onChange={(e) => {
-                          setAmount1(e.target.value);
-                          setLastEdited('amount1');
-                        }}
-                        endContent={<span className="text-default-400 text-small">{tokens.find((t) => t.value === token1)?.label}</span>}
-                        placeholder="0.00"
-                      />
-                    </>
-                  )}
-                  {currentStep === 3 && (
-                    <>
-                      <Input
-                        label="Cooldown Seconds"
-                        description="Minimum time in seconds between rebalances."
-                        type="number"
-                        value={cooldownSec}
-                        onChange={(e) => setCooldownSec(e.target.value)}
-                        placeholder="3600"
-                      />
-                      <Input
-                        label="Min Width Spacings"
-                        description="Minimum width of the liquidity range in tick spacings."
-                        type="number"
-                        value={minWidthSpacings}
-                        onChange={(e) => setMinWidthSpacings(e.target.value)}
-                        placeholder="10"
-                      />
-                      <Input
-                        label="Min Width Percentage"
-                        description="Minimum width of the liquidity range as a percentage."
-                        type="number"
-                        step="0.01"
-                        value={minWidthPct}
-                        onChange={(e) => setMinWidthPct(e.target.value)}
-                        placeholder="0.05"
-                      />
-                      <Input
-                        label="Exit Buffer Spacings"
-                        description="Number of tick spacings for the exit buffer (hysteresis)."
-                        type="number"
-                        value={exitBufferSpacings}
-                        onChange={(e) => setExitBufferSpacings(e.target.value)}
-                        placeholder="5"
-                      />
-                      <Input
-                        label="Slippage BPS"
-                        description="Slippage tolerance in basis points for liquidity operations."
-                        type="number"
-                        value={slipageBps}
-                        onChange={(e) => setSlipageBps(e.target.value)}
-                        placeholder="50"
-                      />
-                      <Input
-                        label="Max Rebalances Per Day"
-                        description="Maximum number of rebalances allowed per day. Leave blank for unlimited."
-                        type="number"
-                        value={maxRebalancesPerDay}
-                        onChange={(e) => setMaxRebalancesPerDay(e.target.value)}
-                        placeholder="Leave blank for unlimited"
-                      />
-                      <Input
-                        label="Max Rebalances Per Hour"
-                        description="Maximum number of rebalances allowed per hour. Leave blank for unlimited."
-                        type="number"
-                        value={maxRebalancesPerHour}
-                        onChange={(e) => setMaxRebalancesPerHour(e.target.value)}
-                        placeholder="Leave blank for unlimited"
-                      />
-                      <Input
-                        label="Max Turnover Token0 24h"
-                        description="Maximum turnover for token0 in the last 24 hours. Leave blank for unlimited."
-                        type="number"
-                        value={maxTurnoverToken0}
-                        onChange={(e) => setMaxTurnoverToken0(e.target.value)}
-                        placeholder="Leave blank for unlimited"
-                      />
-                      <Input
-                        label="Max Turnover Token1 24h"
-                        description="Maximum turnover for token1 in the last 24 hours. Leave blank for unlimited."
-                        type="number"
-                        value={maxTurnoverToken1}
-                        onChange={(e) => setMaxTurnoverToken1(e.target.value)}
-                        placeholder="Leave blank for unlimited"
-                      />
-                      <Input
-                        label="Circuit Max Base Fee (gwei)"
-                        description="Maximum base fee in gwei before circuit breaker triggers"
-                        type="number"
-                        value={circuitMaxBaseFeeGwei}
-                        onChange={(e) => setCircuitMaxBaseFeeGwei(e.target.value)}
-                        placeholder="e.g. 100"
-                      />
-
-                      <Input
-                        label="Circuit Move %"
-                        description="Minimum % move to trigger circuit breaker"
-                        type="number"
-                        value={circuitMovePct}
-                        onChange={(e) => setCircuitMovePct(e.target.value)}
-                        placeholder="e.g. 2"
-                      />
-
-                      <Input
-                        label="Circuit Tick Jump"
-                        description="Minimum tick jump before rebalancing"
-                        type="number"
-                        value={circuitTickJump}
-                        onChange={(e) => setCircuitTickJump(e.target.value)}
-                        placeholder="e.g. 50"
-                      />
-
-                    </>
-                  )}
-                  {currentStep === 4 && (
-                    <>
-                      <div className="flex flex-col gap-5">
-                        <div className="flex flex-col gap-5">
-                        <Input
-                                label="Upside Rebal %"
-                                type="number"
-                                value={rebalUp}
-                                onChange={(e) => setRebalUp(e.target.value)}
-                                placeholder="e.g. 20"
-                              />
-                              <Input
-                                label="Downside Rebal %"
-                                type="number"
-                                value={rebalDown}
-                                onChange={(e) => setRebalDown(e.target.value)}
-                                placeholder="e.g. 18"
-                              />
-                        </div>
-                        <div className=" flex flex-row gap-5">
-                          <RadioGroup label="Bot Type" value={botType} onValueChange={setBotType}>
-                            <Radio value="MANUAL">Manual</Radio>
-                            <Radio value="LRPF">LRPF</Radio>
-                          </RadioGroup>
-                        </div>
-                        {
-                          botType == "MANUAL" ?
-                            <div className="flex flex-col gap-2">
-                              <Input
-                                label="Upper Band %"
-                                type="number"
-                                value={upperBand}
-                                onChange={(e) => setUpperBand(e.target.value)}
-                                placeholder="e.g. 20"
-                              />
-                              <Input
-                                label="Lower Band %"
-                                type="number"
-                                value={lowerBand}
-                                onChange={(e) => setLowerBand(e.target.value)}
-                                placeholder="e.g. 18"
-                              />
-
-                            </div>
-                            :
-                            <div className=" flex flex-row gap-5 justify-center align-middle items-center">
-                              <div className="flex flex-col gap-2">
-                                <Input
-                                  label="ATR Period"
-                                  type="number"
-                                  value={atrPeriod}
-                                  onChange={(e) => setAtrPeriod(e.target.value)}
-                                  placeholder="e.g. 14"
-                                />
-                                <Input
-                                  label="Forecast Horizon"
-                                  type="number"
-                                  value={forecastHorizon}
-                                  onChange={(e) => setForecastHorizon(e.target.value)}
-                                  placeholder="e.g. 7"
-                                />
-                              </div>
-                              <div className="flex flex-col gap-2">
-                                <Input
-                                  label="Band Coverage"
-                                  type="number"
-                                  value={bandCoverage}
-                                  onChange={(e) => setBandCoverage(e.target.value)}
-                                  placeholder="e.g. 0.90"
-                                />
-                                <Input
-                                  label="Vol Multiplier"
-                                  type="number"
-                                  value={volMul}
-                                  onChange={(e) => setVolMul(e.target.value)}
-                                  placeholder="e.g. 0.90"
-                                />
-                              </div>
-
-
-                            </div>
-                        }
-
-                      </div>
-                    </>
-                  )}
-                </ModalBody>
-                <ModalFooter>
-                  {currentStep === 1 ? (
-                    <Button
-                      onPress={() => setCurrentStep(2)}
+            <ModalHeader className="text-2xl font-bold">Deploy New Bot</ModalHeader>
+            <Progress value={(currentStep / 4) * 100} color="primary" className="px-6 mb-4" showValueLabel={true} />
+            <ModalBody className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              {currentStep === 1 && (
+                <>
+                  <Card className="p-4">
+                    <Select
+                      label="Token Pair"
+                      description="Select base token pair"
+                      selectedKeys={[token0, token1]}
+                      isDisabled
+                      variant="bordered"
                     >
-                      Next
-                    </Button>
-                  ) : currentStep === 2 ? (
-                    <>
-                      <Button
-                        onPress={() => setCurrentStep(1)}
-                      >
-                        Back
-                      </Button>
-                      <Button
-                        onPress={() => setCurrentStep(3)}
-                      >
-                        Next
-                      </Button>
-                    </>
-                  ) : currentStep === 3 ?
-
-                    <>
-                      <Button
-                        onPress={() => setCurrentStep(2)}
-                      >
-                        Back
-                      </Button>
-                      <Button
-                        onPress={() => setCurrentStep(4)}
-                      >
-                        Next
-                      </Button>
-                    </>
-                    :
-                    (
-                      <>
-                        <Button
-                          onPress={() => setCurrentStep(3)}
-                        >
-                          Back
-                        </Button>
-                        <Button
-                          onPress={handleStartBot}
-                          isLoading={loading}
-                          color="primary"
-                        >
-                          {loading ? null : "Start Bot"}
-                        </Button>
-                      </>
+                      {tokens.map((t) => (
+                        <SelectItem key={t.value} startContent={<t.icon className="text-lg" />}>
+                          {t.label}
+                        </SelectItem>
+                      ))}
+                    </Select>
+                    <Select
+                      label="Fee Tier"
+                      description="Select pool fee tier"
+                      selectedKeys={[feeTier]}
+                      onSelectionChange={(keys) => setFeeTier(Array.from(keys)[0] as string)}
+                      variant="bordered"
+                      className="mt-4"
+                    >
+                      {feeTiers.map((f) => (
+                        <SelectItem key={f.value}>{f.label}</SelectItem>
+                      ))}
+                    </Select>
+                  </Card>
+                  <Card className="p-4 bg-indigo-50 dark:bg-indigo-900/20">
+                    <p className="text-sm text-gray-600 dark:text-gray-300">Configure your bot's base parameters. Choose the token pair and fee tier to optimize for your strategy.</p>
+                  </Card>
+                </>
+              )}
+              {currentStep === 2 && (
+                <>
+                  <Card className="p-4">
+                    <Input
+                      label={`${tokens.find((t) => t.value === token0)?.label} Amount`}
+                      type="number"
+                      value={amount0}
+                      onChange={(e) => {
+                        setAmount0(e.target.value);
+                        setLastEdited('amount0');
+                      }}
+                      endContent={<span className="text-sm text-gray-500">Bal: {Number(balances[token0])?.toFixed(4)}</span>}
+                      variant="bordered"
+                    />
+                    <Input
+                      label={`${tokens.find((t) => t.value === token1)?.label} Amount`}
+                      type="number"
+                      value={amount1}
+                      onChange={(e) => {
+                        setAmount1(e.target.value);
+                        setLastEdited('amount1');
+                      }}
+                      endContent={<span className="text-sm text-gray-500">Bal: {Number(balances[token1])?.toFixed(4)}</span>}
+                      variant="bordered"
+                      className="mt-4"
+                    />
+                  </Card>
+                  <Card className="p-4 bg-indigo-50 dark:bg-indigo-900/20">
+                    <p className="text-sm text-gray-600 dark:text-gray-300">Specify the amounts for liquidity provision. Amounts are auto-adjusted based on current price.</p>
+                  </Card>
+                </>
+              )}
+              {currentStep === 3 && (
+                <div className="col-span-2 grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <Input
+                    label="Cooldown (sec)"
+                    type="number"
+                    value={cooldownSec}
+                    onChange={(e) => setCooldownSec(e.target.value)}
+                    variant="bordered"
+                  />
+                  <Input
+                    label="Min Width Spacings"
+                    type="number"
+                    value={minWidthSpacings}
+                    onChange={(e) => setMinWidthSpacings(e.target.value)}
+                    variant="bordered"
+                  />
+                  <Input
+                    label="Min Width %"
+                    type="number"
+                    value={minWidthPct}
+                    onChange={(e) => setMinWidthPct(e.target.value)}
+                    variant="bordered"
+                  />
+                  <Input
+                    label="Exit Buffer Spacings"
+                    type="number"
+                    value={exitBufferSpacings}
+                    onChange={(e) => setExitBufferSpacings(e.target.value)}
+                    variant="bordered"
+                  />
+                  <Input
+                    label="Slippage BPS"
+                    type="number"
+                    value={slipageBps}
+                    onChange={(e) => setSlipageBps(e.target.value)}
+                    variant="bordered"
+                  />
+                  <Input
+                    label="Max Rebal/Day"
+                    type="number"
+                    value={maxRebalancesPerDay}
+                    onChange={(e) => setMaxRebalancesPerDay(e.target.value)}
+                    variant="bordered"
+                  />
+                  <Input
+                    label="Max Rebal/Hour"
+                    type="number"
+                    value={maxRebalancesPerHour}
+                    onChange={(e) => setMaxRebalancesPerHour(e.target.value)}
+                    variant="bordered"
+                  />
+                  <Input
+                    label="Max Turnover T0"
+                    type="number"
+                    value={maxTurnoverToken0}
+                    onChange={(e) => setMaxTurnoverToken0(e.target.value)}
+                    variant="bordered"
+                  />
+                  <Input
+                    label="Max Turnover T1"
+                    type="number"
+                    value={maxTurnoverToken1}
+                    onChange={(e) => setMaxTurnoverToken1(e.target.value)}
+                    variant="bordered"
+                  />
+                  <Input
+                    label="Circuit Max Fee (gwei)"
+                    type="number"
+                    value={circuitMaxBaseFeeGwei}
+                    onChange={(e) => setCircuitMaxBaseFeeGwei(e.target.value)}
+                    variant="bordered"
+                  />
+                  <Input
+                    label="Circuit Move %"
+                    type="number"
+                    value={circuitMovePct}
+                    onChange={(e) => setCircuitMovePct(e.target.value)}
+                    variant="bordered"
+                  />
+                  <Input
+                    label="Circuit Tick Jump"
+                    type="number"
+                    value={circuitTickJump}
+                    onChange={(e) => setCircuitTickJump(e.target.value)}
+                    variant="bordered"
+                  />
+                </div>
+              )}
+              {currentStep === 4 && (
+                <>
+                  <Card className="p-4">
+                    <RadioGroup label="Bot Type" value={botType} onValueChange={setBotType}>
+                      <Radio value="MANUAL">Manual</Radio>
+                      <Radio value="LRPF">LRPF</Radio>
+                    </RadioGroup>
+                    <div className="mt-4 space-y-4">
+                      <Input
+                        label="Upside Rebal %"
+                        type="number"
+                        value={rebalUp}
+                        onChange={(e) => setRebalUp(e.target.value)}
+                        variant="bordered"
+                      />
+                      <Input
+                        label="Downside Rebal %"
+                        type="number"
+                        value={rebalDown}
+                        onChange={(e) => setRebalDown(e.target.value)}
+                        variant="bordered"
+                      />
+                    </div>
+                  </Card>
+                  <Card className="p-4">
+                    {botType === "MANUAL" ? (
+                      <div className="space-y-4">
+                        <Input
+                          label="Upper Band %"
+                          type="number"
+                          value={upperBand}
+                          onChange={(e) => setUpperBand(e.target.value)}
+                          variant="bordered"
+                        />
+                        <Input
+                          label="Lower Band %"
+                          type="number"
+                          value={lowerBand}
+                          onChange={(e) => setLowerBand(e.target.value)}
+                          variant="bordered"
+                        />
+                      </div>
+                    ) : (
+                      <div className="space-y-4">
+                        <Input
+                          label="ATR Period"
+                          type="number"
+                          value={atrPeriod}
+                          onChange={(e) => setAtrPeriod(e.target.value)}
+                          variant="bordered"
+                        />
+                        <Input
+                          label="Forecast Horizon"
+                          type="number"
+                          value={forecastHorizon}
+                          onChange={(e) => setForecastHorizon(e.target.value)}
+                          variant="bordered"
+                        />
+                        <Input
+                          label="Band Coverage"
+                          type="number"
+                          value={bandCoverage}
+                          onChange={(e) => setBandCoverage(e.target.value)}
+                          variant="bordered"
+                        />
+                        <Input
+                          label="Vol Multiplier"
+                          type="number"
+                          value={volMul}
+                          onChange={(e) => setVolMul(e.target.value)}
+                          variant="bordered"
+                        />
+                      </div>
                     )}
-                </ModalFooter>
-              </>
-            )}
+                  </Card>
+                </>
+              )}
+            </ModalBody>
+            <ModalFooter className="flex justify-between">
+              {currentStep > 1 && (
+                <Button variant="flat" onPress={() => setCurrentStep(currentStep - 1)}>Previous</Button>
+              )}
+              {currentStep < 4 ? (
+                <Button color="primary" onPress={() => setCurrentStep(currentStep + 1)}>Next Step</Button>
+              ) : (
+                <Button color="primary" isLoading={loading} onPress={handleStartBot}>Deploy Bot</Button>
+              )}
+            </ModalFooter>
           </ModalContent>
         </Modal>
-
-        
 
         {loading ? (
-          <div className="flex justify-center"><Loader2 className="animate-spin text-blue-500 size-12" /></div>
+          <div className="flex justify-center items-center h-64">
+            <Loader2 className="animate-spin text-indigo-500 size-12" />
+          </div>
         ) : (
-          <Tabs fullWidth variant="underlined" aria-label="Bot Status Tabs" className="mb-8">
-            <Tab key="active" title="Active Bots">
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-2 gap-6">
+          <Tabs variant="bordered" color="primary" classNames={{ panel: "pt-6" }}>
+            <Tab key="active" title={
+              <div className="flex items-center space-x-2">
+                <BarChart2 size={16} />
+                <span>Active Bots</span>
+              </div>
+            }>
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                 {activeBots.map((bot) => <BotCard key={bot.bot_id} bot={bot} isActive={true} />)}
-                {activeBots.length === 0 && <p className="text-gray-400">No active bots</p>}
+                {activeBots.length === 0 && <p className="text-center text-gray-500 dark:text-gray-400 col-span-3">No active bots deployed yet</p>}
               </div>
             </Tab>
             <Tab key="inactive" title="Inactive Bots">
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                 {unactiveBots.map((bot) => <BotCard key={bot.bot_id} bot={bot} isActive={false} />)}
-                {unactiveBots.length === 0 && <p className="text-gray-400">No inactive bots</p>}
+                {unactiveBots.length === 0 && <p className="text-center text-gray-500 dark:text-gray-400 col-span-3">No inactive bots</p>}
               </div>
             </Tab>
           </Tabs>
